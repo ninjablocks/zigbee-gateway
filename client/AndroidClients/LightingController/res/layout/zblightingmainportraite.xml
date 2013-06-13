@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent" 
+    android:layout_height="fill_parent">      
+
+    <RelativeLayout
+        android:id="@+id/zllMainLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:orientation="horizontal" >            
+	                
+			
+			     <TextView
+			         android:id="@+id/textViewDev"
+			         android:layout_width="wrap_content"
+			         android:layout_height="wrap_content"
+			         android:layout_marginLeft="5dip"
+			         android:layout_marginTop="5dip"
+			         android:text="Select Device:"
+			         android:textAppearance="?android:attr/textAppearanceMedium" />
+
+	        <LinearLayout
+	            android:id="@+id/linearLayout1a"
+	            android:layout_width="match_parent"
+	            android:layout_height="wrap_content"
+	            android:layout_alignParentBottom="true"
+	            android:layout_alignParentLeft="true"
+	            android:gravity="center_vertical|center_horizontal"
+	            android:orientation="horizontal" >
+
+	            <Button
+	                android:id="@+id/offButton"
+	                android:layout_width="wrap_content"
+	                android:layout_height="wrap_content"
+	                android:onClick="offCmdButton"
+	                android:text="Off" />
+
+	            <SeekBar
+	                android:id="@+id/seekBarLevel"
+	                android:layout_width="0dip"
+	                android:layout_height="wrap_content"
+	                android:layout_weight="1"
+	                android:progress="20" />
+
+	            <Button
+	                android:id="@+id/onButton"
+	                android:layout_width="wrap_content"
+	                android:layout_height="wrap_content"
+	                android:onClick="onCmdButton"
+	                android:text="On" />
+	        </LinearLayout>
+
+	        <com.lightingcontroller.ColourPicker
+	            android:id="@+id/colourPick"
+	            android:layout_width="wrap_content"
+	            android:layout_height="wrap_content"
+	            android:layout_centerHorizontal="true"
+	            android:layout_centerVertical="true" />
+
+	        <Spinner
+	            android:id="@+id/deviceSpinner"
+	            android:layout_width="wrap_content"
+	            android:layout_height="wrap_content"
+	            android:layout_alignParentLeft="true"
+	            android:layout_below="@+id/textViewDev"
+	            android:prompt="@string/SelectDevice" />
+	   
+  </RelativeLayout>        
+</RelativeLayout>

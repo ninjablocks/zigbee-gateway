@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+android:layout_width="fill_parent" 
+android:layout_height="fill_parent" 
+android:scaleType="fitXY" >
+<RelativeLayout
+    android:layout_width="match_parent" 
+    android:layout_height="match_parent">  
+
+    <LinearLayout
+        android:id="@+id/linearLayout6"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentRight="true"
+        android:layout_alignParentTop="true"
+        android:layout_marginBottom="10dp"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginTop="20dp"
+        android:background="@drawable/layoutborder"
+        android:gravity="center_vertical"
+        android:orientation="vertical" >
+
+        <TextView
+            android:id="@+id/textViewControl"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="5dip"
+            android:layout_marginTop="5dip"
+            android:layout_weight="1"
+            android:text="Select controlling device:"
+            android:textAppearance="?android:attr/textAppearanceMedium" />
+
+        <Spinner
+            android:id="@+id/controllingDeviceSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/textViewControlled"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="5dip"
+            android:layout_marginTop="5dip"
+            android:layout_weight="1"
+            android:text="Select device to be controlled:"
+            android:textAppearance="?android:attr/textAppearanceMedium" />
+
+        <Spinner
+            android:id="@+id/controlledDeviceSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+                
+        <LinearLayout
+            android:id="@+id/deviceIdLayout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"  
+            android:layout_marginTop="5dip"          
+            android:orientation="horizontal" >
+                
+            <ToggleButton
+                android:id="@+id/IdControllingToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="10dp"
+                android:layout_weight="1"
+                android:onClick="IdControllingButton" >
+            </ToggleButton>
+
+            <TextView
+                android:id="@+id/IdControllingToggleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="5dip"
+                android:layout_marginTop="5dip"
+                android:layout_weight="1"                
+                android:text="Flash controlling device"
+                android:gravity="center_vertical"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/groupIdLayout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"            
+            android:orientation="horizontal" >
+                    
+            <ToggleButton
+                android:id="@+id/IdControlledToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="10dp"
+                android:layout_weight="1"
+                android:onClick="IdControlledButton" >
+            </ToggleButton>   
+
+            <TextView
+                android:id="@+id/IdControlledToggleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="5dip"
+                android:layout_marginTop="5dip"
+                android:layout_weight="1"                
+                android:text="Flash controlled device"
+                android:gravity="center_vertical"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+        </LinearLayout>   
+
+		<RadioButton
+		    android:id="@+id/bindRadio"
+		    android:layout_width="wrap_content"
+		    android:layout_height="wrap_content"
+		    android:layout_marginRight="10dp"
+		    android:layout_weight="1"
+		    android:onClick="bindButton"
+		    android:text="Bind devices" >
+		</RadioButton>
+		        
+    </LinearLayout>
+			        
+    <TextView 
+        android:layout_marginTop="-10dp" 
+        android:background="#FF000000" 
+        android:textColor="#FFFFFFFF" 
+        android:textAppearance="?android:attr/textAppearanceMedium" 
+        android:layout_width="wrap_content" android:text=" Binding  " 
+        android:layout_height="wrap_content" 
+        android:id="@+id/FrameLable06" 
+        android:layout_alignLeft="@+id/linearLayout6" 
+        android:layout_alignTop="@+id/linearLayout6" 
+        android:layout_marginLeft="32dp">        
+    </TextView>    
+</RelativeLayout>
+</ScrollView>

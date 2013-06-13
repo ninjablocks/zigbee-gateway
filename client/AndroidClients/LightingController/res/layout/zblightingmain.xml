@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent" 
+    android:layout_height="fill_parent">      
+
+    <LinearLayout
+        android:id="@+id/zllMainLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" >
+            
+	    <RelativeLayout
+	        android:id="@+id/deviceFrame"
+	        android:layout_width="wrap_content"
+	        android:layout_height="wrap_content"
+	        android:orientation="vertical" >
+	                
+			 <LinearLayout
+			     android:id="@+id/linearLayout3"
+			     android:layout_width="wrap_content"
+			     android:layout_height="wrap_content"
+			     android:layout_alignParentLeft="true"
+			     android:layout_alignParentRight="true"
+			     android:layout_marginBottom="10dp"
+			     android:layout_marginLeft="10dp"
+			     android:layout_marginRight="10dp"
+			     android:layout_marginTop="10dp"
+			     android:background="@drawable/layoutborder"
+			     android:orientation="vertical" >
+			
+			     <TextView
+			         android:id="@+id/textViewDev"
+			         android:layout_width="wrap_content"
+			         android:layout_height="wrap_content"
+			         android:layout_marginLeft="5dip"
+			         android:layout_marginTop="5dip"
+			         android:text="Select Device:"
+			         android:textAppearance="?android:attr/textAppearanceMedium" />
+			
+			 		<Spinner
+			 		    android:id="@+id/deviceSpinner"
+			 		    android:layout_width="wrap_content"
+			 		    android:layout_height="wrap_content"
+			 		    android:prompt="@string/SelectDevice" />
+				    	   			
+			</LinearLayout>		
+		
+			 <TextView
+			     android:id="@+id/FrameLable04"
+			     android:layout_width="wrap_content"
+			     android:layout_height="wrap_content"
+			     android:layout_alignLeft="@+id/linearLayout3"
+			     android:layout_alignTop="@+id/linearLayout3"
+			     android:layout_marginLeft="32dp"  
+			     android:layout_marginTop="-10dp"      
+			     android:background="#FF000000"
+			     android:text=" Device Selection  "
+			     android:textAppearance="?android:attr/textAppearanceMedium"
+			     android:textColor="#FFFFFFFF" >
+			 </TextView>   
+	    
+	    </RelativeLayout>	        
+
+	    <RelativeLayout
+	        android:id="@+id/controlFrame"
+	        android:layout_width="wrap_content"
+	        android:layout_height="wrap_content"
+	        android:layout_marginTop="10dp"
+	        android:orientation="vertical" >
+			 	    
+	    	<LinearLayout
+				android:id="@+id/linearLayout1"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:layout_alignParentLeft="true"
+				android:layout_alignParentRight="true"
+				android:layout_marginBottom="5dp"
+				android:layout_marginLeft="10dp"
+				android:layout_marginRight="10dp"
+				android:layout_marginTop="10dp"
+				android:background="@drawable/layoutborder"
+				android:orientation="vertical" >
+	
+	        <com.lightingcontroller.ColourPicker
+	            android:id="@+id/colourPick"
+	            android:layout_width="wrap_content"
+	            android:layout_height="wrap_content"
+	            android:layout_gravity="top|center_horizontal"
+	            android:layout_marginTop="15dp" />
+	
+	        <LinearLayout
+	            android:id="@+id/linearLayout1a"
+	            android:layout_width="match_parent"
+	            android:layout_height="wrap_content"
+	            android:layout_marginTop="15dp"
+	            android:gravity="center_vertical|center_horizontal"
+	            android:orientation="horizontal" >
+	
+	            <Button
+	                android:id="@+id/offButton"
+	                android:layout_width="wrap_content"
+	                android:layout_height="wrap_content"
+	                android:onClick="offCmdButton"
+	                android:text="Off" />
+	
+	            <SeekBar
+	                android:id="@+id/seekBarLevel"
+	                android:layout_width="0dip"
+	                android:layout_height="wrap_content"
+	                android:layout_weight="1"
+	                android:progress="20" />
+	
+	            <Button
+	                android:id="@+id/onButton"
+	                android:layout_width="wrap_content"
+	                android:layout_height="wrap_content"
+	                android:onClick="onCmdButton"
+	                android:text="On" />
+	        </LinearLayout>
+	    </LinearLayout>
+	
+		
+	    <TextView
+	        android:id="@+id/FrameLable03"
+	        android:layout_width="wrap_content"
+	        android:layout_height="wrap_content"
+	        android:layout_alignLeft="@+id/linearLayout1"
+	        android:layout_alignTop="@+id/linearLayout1"
+	        android:layout_marginLeft="32dp"  
+	        android:layout_marginTop="-10dp"
+	        android:background="#FF000000"
+	        android:text=" Device Control  "
+	        android:textAppearance="?android:attr/textAppearanceMedium"
+	        android:textColor="#FFFFFFFF" >
+	    </TextView> 
+	</RelativeLayout>    
+  </LinearLayout>        
+</RelativeLayout>

@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+android:layout_width="fill_parent" 
+android:layout_height="fill_parent" 
+android:scaleType="fitXY" >
+<RelativeLayout
+    android:layout_width="match_parent" 
+    android:layout_height="match_parent">  
+
+    <LinearLayout
+        android:id="@+id/linearLayout6"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentRight="true"
+        android:layout_alignParentTop="true"
+        android:layout_marginBottom="10dp"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginTop="20dp"
+        android:background="@drawable/layoutborder"
+        android:gravity="center_vertical"
+        android:orientation="vertical" >
+
+        <TextView
+            android:id="@+id/textViewDev"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="5dip"
+            android:layout_marginTop="5dip"
+            android:layout_weight="1"
+            android:text="Select Device:"
+            android:textAppearance="?android:attr/textAppearanceMedium" />
+
+        <Spinner
+            android:id="@+id/deviceSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:prompt="@string/SelectDevice" />
+
+        <RadioButton
+            android:id="@+id/deviceChangeNameButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginRight="10dp"
+            android:layout_weight="1"
+            android:onClick="deviceChangeNameButton"
+            android:text="Change Device Name" />
+
+        <TextView
+            android:id="@+id/textViewGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="5dip"
+            android:layout_marginTop="5dip"
+            android:layout_weight="1"
+            android:text="Select Group:"
+            android:textAppearance="?android:attr/textAppearanceMedium" />
+
+        <Spinner
+            android:id="@+id/groupSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:prompt="@string/SelectGroup" />
+
+		<RadioButton
+		    android:id="@+id/newGroupRadio"
+		    android:layout_width="wrap_content"
+		    android:layout_height="wrap_content"
+		    android:layout_marginRight="10dp"
+		    android:layout_weight="1"
+		    android:onClick="newGroupCmdButton"
+		    android:text="Create New Group" >
+		</RadioButton>
+		
+		<RadioButton
+		    android:id="@+id/addToGroupRadio"
+		    android:layout_width="wrap_content"
+		    android:layout_height="wrap_content"
+		    android:layout_marginRight="10dp"
+		    android:layout_toRightOf="@+id/sceneRadio0"
+		    android:layout_weight="1"
+		    android:onClick="addToGroupCmdButton"
+		    android:text="Add Selected Light to Selected Group" >
+		</RadioButton>
+
+        <LinearLayout
+            android:id="@+id/lightIdLayout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"            
+            android:orientation="horizontal" >
+                
+            <ToggleButton
+                android:id="@+id/IdLightToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="10dp"
+                android:layout_toRightOf="@+id/sceneRadio0"
+                android:layout_weight="1"
+                android:onClick="IdLightCmdButton"
+                android:text="Flash Selected Light" >
+            </ToggleButton>
+
+            <TextView
+                android:id="@+id/IdLightToggleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="5dip"
+                android:layout_marginTop="5dip"
+                android:layout_weight="1"                
+                android:text="Flash Selected Light"
+                android:gravity="center_vertical"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/groupIdLayout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"            
+            android:orientation="horizontal" >
+                    
+            <ToggleButton
+                android:id="@+id/IdGroupToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="10dp"
+                android:layout_toRightOf="@+id/sceneRadio0"
+                android:layout_weight="1"
+                android:onClick="IdGroupCmdButton" >
+            </ToggleButton>   
+
+            <TextView
+                android:id="@+id/IdGroupToggleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="5dip"
+                android:layout_marginTop="5dip"
+                android:layout_weight="1"                
+                android:text="Flash Selected Group"
+                android:gravity="center_vertical"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+        </LinearLayout>            
+    </LinearLayout>
+			        
+    <TextView 
+        android:layout_marginTop="-10dp" 
+        android:background="#FF000000" 
+        android:textColor="#FFFFFFFF" 
+        android:textAppearance="?android:attr/textAppearanceMedium" 
+        android:layout_width="wrap_content" android:text=" Groups  " 
+        android:layout_height="wrap_content" 
+        android:id="@+id/FrameLable06" 
+        android:layout_alignLeft="@+id/linearLayout6" 
+        android:layout_alignTop="@+id/linearLayout6" 
+        android:layout_marginLeft="32dp">        
+    </TextView>    
+</RelativeLayout>
+</ScrollView>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+  <translate android:fromYDelta="100%p" android:toYDelta="0" android:duration="250" /> 
+  <alpha android:fromAlpha="0.0" android:toAlpha="1.0" android:duration="250" />
+</set>
+
+ -->
+
+
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <alpha android:fromAlpha="1.0" android:toAlpha="0.0" android:duration="200" />
+  <scale android:duration="200" android:fromXScale="1.0" android:toXScale="0.5" android:fromYScale="1.0" android:toYScale="0.5" android:pivotX="50%p" android:pivotY="50%p" />
+  <set>
+    <translate android:fromYDelta="0" android:toYDelta="-5%p" android:duration="50" /> 
+  </set>
+  <set android:startOffset="50">
+ 	<translate android:fromYDelta="-5%p" android:toYDelta="100%p" android:duration="250" />
+  </set>  
+
+</set>

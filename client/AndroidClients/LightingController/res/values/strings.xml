@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="hello">Hello World, UART_Jni!</string>
+    <string name="app_name">ZllRemote</string>
+    <string-array name="OSC">
+        <item>Internal OSC</item>>
+        <item>External-16M</item>>
+        <item>External-26M</item>>
+        <item>External-32M</item>>
+    </string-array>
+    <string-array name="BUAD_Rate">
+        <item>4800</item>>
+        <item>9600</item>>
+        <item>19200</item>>
+        <item>38400</item>>
+        <item>57600</item>>
+        <item>76800</item>>
+        <item>115200</item>>
+        <item>230400</item>>
+    </string-array>
+    <string-array name="Parity_Check">
+        <item>Disable</item>>
+        <item>Odd</item>>
+        <item>Even</item>>
+    </string-array>
+    
+    <string name="textviewMSG">Ready</string>
+    
+    <string name="lb_SendData">Send Data:</string>
+	<string name="lb_BaudRate">Baud Rate:</string>
+	<string name="lb_osc">OSC:</string>
+	<string name="lb_paritycheck">Parity Check:</string>
+	
+	<string name="m_configinitial">Config Initial</string>
+	<string name="m_senddata">Send data</string>
+	<string name="m_recvdata">Receive data</string>
+	<string name="m_clear">Clear Screen</string>	
+	<string name="m_about">About</string>	
+	<string name="m_quit">Quit</string>		
+	
+    <string name="bt_ConfigInitial">Config Initial</string>	
+    <string name="bt_startrecv">start Recv</string>
+	<string name="bt_stoprecv">Stop Recv</string>		
+    <string name="bt_startsend">Start Send</string>
+	<string name="bt_stopsend">Stop Send</string>		
+	
+	<string name="rbt_0">Flow Control</string>
+	<string name="rbt_1">UART0 Disable</string>
+	<string name="rbt_2">UART0 Handshake:</string>
+	<string name="rbt_3">UART1 Disable</string>
+	<string name="rbt_4">UART0 Handshake:</string>
+	
+	<string name="str_sendtext">254,11,41,0,11,1,0,11,6,0,3,1,1,0,1,39</string>
+	<string name="SelectDevice">Select Device</string>
+	<string name="SelectGroup">Select Group</string>
+	<string name="groupAdd">Add Light to Group</string>
+	<string name="optionMenuTitle">Action Menu</string>
+	<string name="optionMenuGroupsTitle">Groups and Scenes</string>
+	<string name="optionMuneBindingTitle">Binding</string>		
+	<string name="optionMuneListDevicesTitle">List Devices</string>
+</resources>
