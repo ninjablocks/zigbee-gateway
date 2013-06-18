@@ -46,8 +46,34 @@ extern "C"
 
 #include <stdint.h>
 
+#define SBL_SUCCESS 0
+#define SBL_INTERNAL_ERROR 1
+#define SBL_BUSY 2
+#define SBL_OUT_OF_MEMORY 3
+#define SBL_PENDING 4
+#define SBL_ABORTED_BY_USER 5
+#define SBL_NO_ACTIVE_DOWNLOAD 6
+#define SBL_ERROR_OPENING_FILE 7
+#define SBL_TARGET_WRITE_FAILED 8
+#define SBL_EXECUTION_FAILED 9
+#define SBL_HANDSHAKE_FAILED 10
+#define SBL_LOCAL_READ_FAILED 11
+#define SBL_VERIFICATION_FAILED 12
+#define SBL_COMMUNICATION_FAILED 13
+#define SBL_ABORTED_BY_ANOTHER_USER 14
+#define SBL_REMOTE_ABORTED_BY_USER 15
+#define SBL_TARGET_READ_FAILED 16
+#define SBL_TARGET_STILL_WORKING 0xFF
+
+#define SUCCESS 0
+#define FAILURE 1
+
+#define BOOTLOADER_TIMEOUT 100 //milliseconds
+
+
+
 /********************************************************************/
-// ZigBee Soc Types
+// ZB SOC Types
 
 // Endpoint information record entry
 typedef struct
@@ -68,30 +94,45 @@ typedef uint8_t (*zbSocZclGetStateCb_t)(uint8_t state, uint16_t nwkAddr, uint8_t
 typedef uint8_t (*zbSocZclGetLevelCb_t)(uint8_t level, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocZclGetHueCb_t)(uint8_t hue, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocZclGetSatCb_t)(uint8_t sat, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZclGetTempCb_t)(uint16_t sat, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZclGetPowerCb_t)(uint32_t power, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZclGetHumidCb_t)(uint16_t humnidity, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZoneSateChangeCb_t)(uint32_t zoneState, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocBootloadingDoneCb_t)(uint8_t State);
+typedef uint8_t (*zbSocBootloadingProgressReportingCb_t)(uint8_t Phase, uint32_t location);
 
 typedef struct
 {
   zbSocTlIndicationCb_t          pfnTlIndicationCb;      // TouchLink Indication callback
-  zbSocNewDevIndicationCb_t      pfnNewDevIndicationCb;  // New device Indication callback    
+  zbSocNewDevIndicationCb_t         pfnNewDevIndicationCb;  // New device Indication callback    
   zbSocZclGetStateCb_t           pfnZclGetStateCb;       // ZCL response callback for get State
   zbSocZclGetLevelCb_t           pfnZclGetLevelCb;     // ZCL response callback for get Level
   zbSocZclGetHueCb_t             pfnZclGetHueCb;         // ZCL response callback for get Hue
   zbSocZclGetSatCb_t             pfnZclGetSatCb;         // ZCL response callback for get Sat
+  zbSocZclGetTempCb_t            pfnZclGetTempCb;         // ZCL response callback for get Temp
+  zbSocZclGetPowerCb_t           pfnZclGetPowerCb;         // ZCL response callback for get Power
+  zbSocZclGetHumidCb_t           pfnZclGetHumidCb;         // ZCL response callback for get Temp    
+  zbSocZoneSateChangeCb_t        pfnZclZoneSateChangeCb;    //ZCL Command indicating Alarm Zone State Change
+  zbSocBootloadingDoneCb_t       pfnBootloadingDoneCb;    //Bootloader processing ended
+  zbSocBootloadingProgressReportingCb_t pfnBootloadingProgressReportingCb; //bootloader progress reporting
 } zbSocCallbacks_t;
 
-#define Z_EXTADDR_LEN 8
+typedef void (*timerCallback_t)(void);
 
-typedef enum
+typedef struct
 {
-  afAddrNotPresent = 0,
-  afAddrGroup      = 1,
-  afAddr16Bit      = 2,
-  afAddr64Bit      = 3,  
-  afAddrBroadcast  = 15
-} afAddrMode_t;
+	timerCallback_t callback;
+	timer_t id;
+	uint8_t enabled;
+} zllTimer;
+
+extern zllTimer TIMEOUT_TIMER;
+extern int serialPortFd;
+extern const char * BOOTLOADER_RESULT_STRINGS[];
+
 
 /********************************************************************/
-// ZigBee Soc API
+// ZB SOC API
 
 //configuration API's
 int32_t zbSocOpen( char *devicePath );
@@ -119,6 +160,23 @@ void zbSocGetState(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetLevel(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetHue(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetSat(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
+void zbSocGetPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
+void zbSocGetTemp(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
+void zbSocGetHumid(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
+void zbSocSblHandshake(void);
+void zbSocResetLocalDevice(void);
+uint8_t zbSocSblInitiateImageDownload(char * filename, uint8_t enableProgressReporting);
+void zbSocFinishLoadingImage(void);
+//void zbSocTimeoutCallback(void);
+//void zbSocExecuteTimerCallback(zllTimer * timer);
+void zbSocDisableTimeout(zllTimer * timer);
+void zbSocEnableTimeout(zllTimer * timer, uint32_t milliseconds);
+uint8_t zbSocIsTimeoutEnabled(zllTimer * timer);
+uint8_t zbSocIsTimerExpired(zllTimer * timer);
+uint8_t zbSocHandleTimers(void);
+void zbSocRemoveDevice(uint8_t ieeeAddr[]);
+void zbSocForceRun(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -70,7 +70,7 @@ deviceRecord_t *deviceRecordHead = NULL;
 static deviceRecord_t* createDeviceRec( epInfo_t epInfo );
 static deviceRecord_t* findDeviceRec( uint16_t nwkAddr, uint8_t endpoint);
 static char* findDeviceInFileString( uint16_t nwkAddr, uint8_t endpoint, char* fileBuf, uint32_t bufLen );
-static void reomveDeviceFromFile( uint16_t nwkAddr, uint8_t endpoint );
+static void removeDeviceFromFile( uint16_t nwkAddr, uint8_t endpoint );
 static void writeDeviceToFile( deviceRecord_t *device );
 static void readDeviceListFromFile( void );
 
@@ -172,109 +172,127 @@ static deviceRecord_t* findDeviceRec( uint16_t nwkAddr, uint8_t endpoint)
  *
  * @return 
  ***************************************************************************************************/
-static char* findDeviceInFileString( uint16_t nwkAddr, uint8_t endpoint, char* fileBuf, uint32_t bufLen )
-{
-  char *deviceIdx = NULL, *deviceStartIdx, *deviceEndIdx;
-  uint32_t remainingBytes;
-  
-  //printf("findDeviceInFile++\n");
-  
-  deviceStartIdx = fileBuf;
-  remainingBytes = bufLen;
-  //set to a non NULL value
-  deviceEndIdx = fileBuf;
-  
-  while( ((fileBuf - deviceStartIdx) < bufLen) && (deviceEndIdx != 0) )
-  {
-    //is this device the correct device
-    if( *((uint16_t*)deviceStartIdx) == nwkAddr )
-    {
-      //device found
-      deviceIdx = deviceStartIdx;
-      break;
-    }       
-     
-    //find end of current device by finding the delimiter
-    deviceEndIdx = strchr(deviceStartIdx, ';');
-    if( deviceEndIdx > (fileBuf + bufLen) )
-    {
-      //past end of file string
-      //printf("findDeviceInFile++\n");
-       deviceEndIdx = NULL;
-    }
-    
-    if( deviceEndIdx )
-    {
-      remainingBytes = bufLen - (fileBuf - deviceEndIdx);
-      deviceStartIdx = &(deviceEndIdx[1]);    
-    }
-  }
-  
-  //printf("findDeviceInFile-- [%x]\n", (uint32_t) deviceIdx);
-  
-  return deviceIdx;
-}
+	static char* findDeviceInFileString( uint16_t nwkAddr, uint8_t endpoint, char* fileBuf, uint32_t bufLen )
+	{
+	  char *deviceIdx = NULL, *deviceStartIdx, *deviceEndIdx;
+	  uint32_t remainingBytes;
+	  
+	  printf("findDeviceInFile++: bufLen=%d, fileBuf:%p\n", bufLen, fileBuf);
+	  
+	  deviceStartIdx = fileBuf;
+	  remainingBytes = bufLen;
+	  //set to a non NULL value
+	  deviceEndIdx = fileBuf;
+	  
+	  while( ((deviceStartIdx - fileBuf) < bufLen) && (deviceEndIdx != 0) )
+	  {
+		printf("findDeviceInFile++: bufLen=%d\n", bufLen);
+		
+		//is this device the correct device (start + IEEE Addr of 8 bytes)
+		if( *((uint16_t*)(deviceStartIdx+8)) == nwkAddr )
+		{
+		  //device found
+		  printf("findDeviceInFileString: device:%x found\n", nwkAddr);
+		  deviceIdx = deviceStartIdx;
+		  break;
+		}
+		else
+		{
+		  printf("findDeviceInFileString: device:%x found, looking for %x\n", *((uint16_t*)(deviceStartIdx+8)), nwkAddr);	
+		}	 
+		 
+		//find end of current device by finding the delimiter
+		deviceEndIdx = deviceStartIdx;
+		while((*deviceEndIdx != ';') && ((fileBuf - deviceEndIdx) < bufLen))
+		{
+		  deviceEndIdx++;
+		}
+		
+		if( deviceEndIdx > (fileBuf + bufLen) )
+		{
+		  //past end of file string
+		  //printf("findDeviceInFile++\n");
+		   deviceEndIdx = NULL;
+		}
+		
+		if( deviceEndIdx )
+		{
+		  remainingBytes = bufLen - (fileBuf - deviceEndIdx);
+		  deviceStartIdx = &(deviceEndIdx[1]);	  
+		}
+	  }
+	  
+	  //printf("findDeviceInFile-- [%x]\n", (uint32_t) deviceIdx);
+	  
+	  return deviceIdx;
+	}
 
 /***************************************************************************************************
- * @fn      reomveDeviceFromFile - remove device from file.
+ * @fn      removeDeviceFromFile - remove device from file.
  *
  * @brief   
  * @param   
  *
  * @return 
  ***************************************************************************************************/
-static void reomveDeviceFromFile( uint16_t nwkAddr, uint8_t endpoint )
-{
-  FILE *fpDevFile;
-  uint32_t fileSize;
-  char *fileBuf, *deviceStr, *devStrEnd;
-  
-  //printf("reomveDeviceFromFile++\n");
-  
-  fpDevFile = fopen("devicelistfile.dat", "w+b");
-  
-  if(fpDevFile)
-  {
-    //read the file into a buffer  
-    fseek(fpDevFile, 0, SEEK_END);
-    fileSize = ftell(fpDevFile);
-    rewind(fpDevFile);  
-    fileBuf = (char*) calloc(sizeof(char), fileSize);  
-    fread(fileBuf, 1, fileSize, fpDevFile);
-
-    //printf("reomveDeviceFromFile: number of bytes in file = %d\n", fileSize);
-    //printf("reomveDeviceFromFile: Searching for device string\n");
-    //find the device
-    deviceStr = findDeviceInFileString( nwkAddr, endpoint, fileBuf, fileSize );
-    
-    if( deviceStr )
-    {
-      //printf("reomveDeviceFromFile: device string:%x\n", (uint32_t) deviceStr);
-      //find device delimiter     
-      devStrEnd = strchr(deviceStr, ';');
-      
-      if( devStrEnd )
-      {         
-        //copy start of file to bigenning of device
-        fwrite((const void *) fileBuf, fileBuf-deviceStr, 1, fpDevFile);
-        //copy end of device to end of file
-        fwrite((const void *) devStrEnd, fileSize - (fileBuf - devStrEnd), 1, fpDevFile);      
-      }
-      else
-      {
-        //printf("reomveDeviceFromFile: device delimiter not found\n");
-      }
-    }
-    else
-    {
-      //printf("reomveDeviceFromFile: device not found in file\n");
-    }
-  }
-    
-  fflush(fpDevFile);
-  fclose(fpDevFile);
-  free(fileBuf);
-}
+	static void removeDeviceFromFile( uint16_t nwkAddr, uint8_t endpoint )
+	{
+	  FILE *fpDevFile;
+	  uint32_t fileSize;
+	  char *fileBuf, *deviceStr, *devStrEnd;
+	  
+	  //printf("removeDeviceFromFile++\n");
+	  
+	  fpDevFile = fopen("devicelistfile.dat", "rwb");
+	  
+	  if(fpDevFile)
+	  {
+		//read the file into a buffer  
+		fseek(fpDevFile, 0, SEEK_END);
+		fileSize = ftell(fpDevFile);
+		rewind(fpDevFile);	
+		fileBuf = (char*) calloc(sizeof(char), fileSize);  
+		fread(fileBuf, 1, fileSize, fpDevFile);
+	
+		//printf("removeDeviceFromFile: number of bytes in file = %d\n", fileSize);
+		//printf("removeDeviceFromFile: Searching for device string\n");
+		//find the device
+		deviceStr = findDeviceInFileString( nwkAddr, endpoint, fileBuf, fileSize );
+		
+		if( deviceStr )
+		{
+		  printf("removeDeviceFromFile: device string:%x\n", (uint32_t) deviceStr);
+		
+		  //find end of current device by finding the delimiter
+		  devStrEnd = deviceStr;
+		  while((*devStrEnd != ';') && ((devStrEnd - fileBuf) < fileSize))
+		  {
+			devStrEnd++;
+			printf("removeDeviceFromFile: finding delimiter:%c:%x\n", *devStrEnd, (uint32_t) devStrEnd);
+		  } 	 
+		  
+		  if((devStrEnd - fileBuf) < fileSize)
+		  { 		
+			//copy start of file to bigenning of device
+			fwrite((const void *) fileBuf, fileBuf-deviceStr, 1, fpDevFile);
+			//copy end of device to end of file
+			fwrite((const void *) devStrEnd, fileSize - (fileBuf - devStrEnd), 1, fpDevFile);	   
+		  }
+		  else
+		  {
+			printf("removeDeviceFromFile: device delimiter not found\n");
+		  }
+		}
+		else
+		{
+		  printf("removeDeviceFromFile: device not found in file\n");
+		}
+	  }
+		
+	  fflush(fpDevFile);
+	  fclose(fpDevFile);
+	  free(fileBuf);
+	}
 
 /***************************************************************************************************
  * @fn      writeDeviceToFile - store device list.
@@ -304,13 +322,15 @@ static void writeDeviceToFile( deviceRecord_t *device )
     if(device->epInfo.deviceName)
     {    
       uint8_t i;      
-      //printf("writeDeviceToFile: Store deviceName\n");
+      printf("writeDeviceToFile: Store deviceName - %d: ", (device->epInfo.deviceName[0]));
       
       //first char of dev name is str length
       for(i = 0; i < (device->epInfo.deviceName[0] + 1) ; i++)
       {
         fwrite((const void *) (&(device->epInfo.deviceName[i])), 1, 1, fpDevFile);
+        printf("%c", (device->epInfo.deviceName[i]));        
       }
+      printf("\n");
     }
     else
     {
@@ -322,7 +342,7 @@ static void writeDeviceToFile( deviceRecord_t *device )
     //printf("writeDeviceToFile: Store status\n");
     //Store status
     fwrite((const void *) &(device->epInfo.status), 1, 1, fpDevFile);
-    //write delimter
+    //socWrite delimter
     fwrite(";", 1, 1, fpDevFile);
     
     fflush(fpDevFile);
@@ -444,6 +464,8 @@ void devListRemoveDevice( uint16_t nwkAddr, uint8_t endpoint )
 {
   deviceRecord_t *srchRec, *prevRec=NULL;
 
+  printf("deleteDeviceRec: nwkAddr:%x, endpoint:%x \n", nwkAddr, endpoint);
+
   // find record and prev device record
   srchRec = deviceRecordHead;
   
@@ -456,7 +478,7 @@ void devListRemoveDevice( uint16_t nwkAddr, uint8_t endpoint )
      
   if (srchRec == NULL)
   {
-      //printf("deleteDeviceRec: record not found\n");
+      printf("deleteDeviceRec: record not found\n");
       return;    
   }
   else
@@ -475,6 +497,7 @@ void devListRemoveDevice( uint16_t nwkAddr, uint8_t endpoint )
     }
     
     free(srchRec);        
+    removeDeviceFromFile(nwkAddr, endpoint);
   }
 }
 
@@ -506,7 +529,7 @@ void devListRestorDevices( void )
  */
 void devListChangeDeviceName( uint16_t devNwkAddr, uint8_t devEndpoint, char *deviceNameStr)
 {
-  //printf("devListChangeDeviceName++\n");   
+  printf("devListChangeDeviceName++: devNwkAddr:%x, devEndpoint:%x\n", devNwkAddr, devEndpoint);   
     
   deviceRecord_t *device = findDeviceRec( devNwkAddr, devEndpoint );             
   
@@ -517,23 +540,23 @@ void devListChangeDeviceName( uint16_t devNwkAddr, uint8_t devEndpoint, char *de
       free(device->epInfo.deviceName);
     }
     
-    //printf("devListChangeDeviceName: removing device from file\n");  
-    reomveDeviceFromFile(devNwkAddr, devEndpoint);
+    printf("devListChangeDeviceName: removing device from file\n");  
+    removeDeviceFromFile(devNwkAddr, devEndpoint);
     
-    //printf("devListChangeDeviceName: Changing device name\n");      
+    printf("devListChangeDeviceName: Changing device name: %c\n", (deviceNameStr[0] + 1));      
     //fisrt byte of deviceNameStr is the size of the string
     device->epInfo.deviceName = malloc(deviceNameStr[0]);
     strncpy(device->epInfo.deviceName, &(deviceNameStr[0]), (deviceNameStr[0] + 1) );
         
-    //printf("devListChangeDeviceName: writing device to file\n");  
+    printf("devListChangeDeviceName: writing device to file\n");  
     writeDeviceToFile(device);           
   }
   else
   {
-    //printf("devListChangeDeviceName: Device not found");  
+    printf("devListChangeDeviceName: Device not found");  
   }  
   
-  //printf("devListChangeDeviceName--\n");
+  printf("devListChangeDeviceName--\n");
 
   return;  
 }

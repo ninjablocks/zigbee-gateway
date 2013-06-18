@@ -63,31 +63,37 @@ extern "C"
 #define SRPC_GET_GROUP_RSP      0x000c
 #define SRPC_ADD_SCENE_RSP      0x000d
 #define SRPC_GET_SCENE_RSP      0x000e
-
+#define SRPC_HUMID_READING      0x000f
+#define SRPC_ZONESTATE_CHANGE   0x0010
+#define SRPC_SBL_RSP     0x0011
+#define SRPC_SBL_PROGRESS 0x0012
 
 //define incoming RPCS command ID's
-#define SRPC_CLOSE              0x80;
-#define SRPC_GET_DEVICES        0x81;
-#define SRPC_SET_DEV_STATE      0x82;	
-#define SRPC_SET_DEV_LEVEL      0x83;	
-#define SRPC_SET_DEV_COLOR      0x84;
-#define SRPC_GET_DEV_STATE      0x85;	
-#define SRPC_GET_DEV_LEVEL      0x86;	
-#define SRPC_GET_DEV_HUE        0x87;
-#define SRPC_GET_DEV_SAT        0x88;
-#define SRPC_BIND_DEVICES       0x89;
-#define SRPC_GET_THERM_READING  0x8a;
-#define SRPC_GET_POWER_READING  0x8b;
-#define SRPC_DISCOVER_DEVICES   0x8c;
-#define SRPC_SEND_ZCL           0x8d;
-#define SRPC_GET_GROUPS         0x8e;	
-#define SRPC_ADD_GROUP          0x8f;	
-#define SRPC_GET_SCENES         0x90;	
-#define SRPC_STORE_SCENE        0x91;	
-#define SRPC_RECALL_SCENE       0x92;	
-#define SRPC_IDENTIFY_DEVICE    0x93;	
-#define SRPC_CHANGE_DEVICE_NAME 0x94;
-#define SRPC_REMOVE_DEVICE      0x95;
+#define SRPC_CLOSE              0x80
+#define SRPC_GET_DEVICES        0x81
+#define SRPC_SET_DEV_STATE      0x82	
+#define SRPC_SET_DEV_LEVEL      0x83	
+#define SRPC_SET_DEV_COLOR      0x84
+#define SRPC_GET_DEV_STATE      0x85	
+#define SRPC_GET_DEV_LEVEL      0x86	
+#define SRPC_GET_DEV_HUE        0x87
+#define SRPC_GET_DEV_SAT        0x88
+#define SRPC_BIND_DEVICES       0x89
+#define SRPC_GET_THERM_READING  0x8a
+#define SRPC_GET_POWER_READING  0x8b
+#define SRPC_DISCOVER_DEVICES   0x8c
+#define SRPC_SEND_ZCL           0x8d
+#define SRPC_GET_GROUPS         0x8e	
+#define SRPC_ADD_GROUP          0x8f	
+#define SRPC_GET_SCENES         0x90	
+#define SRPC_STORE_SCENE        0x91	
+#define SRPC_RECALL_SCENE       0x92	
+#define SRPC_IDENTIFY_DEVICE    0x93	
+#define SRPC_CHANGE_DEVICE_NAME 0x94
+#define SRPC_REMOVE_DEVICE      0x95
+#define SRPC_GET_HUMID_READING  0x96
+#define SRPC_SBL_DOWNLOAD_IMAGE 0x97
+#define SRPC_SBL_ABORT          0x98
 
 #define SRPC_FUNC_ID 0
 #define SRPC_MSG_LEN 1
@@ -95,6 +101,17 @@ extern "C"
 #define SRPC_TCP_PORT 0x2be3
 
 #define CLOSE_AUTH_NUM 0x2536
+
+#define Z_EXTADDR_LEN 8
+
+typedef enum
+{
+  afAddrNotPresent = 0,
+  afAddrGroup      = 1,
+  afAddr16Bit      = 2,
+  afAddr64Bit      = 3,  
+  afAddrBroadcast  = 15
+} afAddrMode_t;
 
 typedef struct
 {
@@ -118,6 +135,11 @@ void SRPC_CallBack_getHueRsp(uint8_t hue, uint16_t srcAddr, uint8_t endpoint, ui
 void SRPC_CallBack_getSatRsp(uint8_t sat, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 void SRPC_CallBack_getTempRsp(uint16_t temp, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 void SRPC_CallBack_getPowerRsp(uint32_t power, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
+void SRPC_CallBack_getHumidRsp(uint16_t humid, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
+void SRPC_CallBack_zoneSateInd(uint32_t zoneState, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
+void SRPC_CallBack_bootloadingDone(uint8_t result);
+void SRPC_CallBack_loadImageProgress(uint8_t phase, uint32_t location);
+
 
 #ifdef __cplusplus
 }

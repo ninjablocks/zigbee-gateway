@@ -57,10 +57,15 @@
 
 #define MAX_CLIENTS 50
 
-/*********************************************************************
- * GLOBAL VARIABLES
- */
- 
+#define SOCKET_BOOTLOADING_STATE_IDLE 0
+#define SOCKET_BOOTLOADING_STATE_ACTIVE 1
+
+//todo: use a callback instead.
+void SRPC_killLoadingImage(void);
+extern uint16_t SocketBootloadingState;
+extern uint32 bootloader_initiator_clientFd;
+
+
 /*********************************************************************
  * TYPEDEFS
  */ 
@@ -72,11 +77,16 @@ typedef struct
   struct sockaddr_in cli_addr;
 } socketRecord_t;
 
+
+/*********************************************************************
+ * GLOBAL VARIABLES
+ */
 socketRecord_t *socketRecordHead = NULL;
 
 socketServerCb_t socketServerRxCb;
 socketServerCb_t socketServerConnectCb;
-
+	
+ 
 /*********************************************************************
  * LOCAL FUNCTION PROTOTYPES
  */ 
@@ -327,6 +337,7 @@ uint32 socketSeverGetNumClients(void)
   return (recordCnt);
 }
 
+
 /*********************************************************************
  * @fn      socketSeverPoll()
  *
@@ -337,12 +348,12 @@ uint32 socketSeverGetNumClients(void)
  *
  * @return  none
  */
-void socketSeverPoll(int clinetFd, int revent)
+void socketSeverPoll(int clientFd, int revent)
 {
   //printf("pollSocket++\n");
 
   //is this a new connection on the listening socket
-  if(clinetFd == socketRecordHead->socketFd)
+  if(clientFd == socketRecordHead->socketFd)
   {
     int newClientFd = createSocketRec();
     
@@ -356,22 +367,28 @@ void socketSeverPoll(int clinetFd, int revent)
     //this is a client socket is it a input or shutdown event
     if (revent & POLLIN)
     {
-      uint32 pakcetCnt = 0;
       //its a Rx event
-      //printf("got Rx on fd %d, pakcetCnt=%d\n", clinetFd, pakcetCnt++);      
+//      printf("got Rx on fd %d, pakcetCnt=%d\n", clientFd, pakcetCnt++);      
       if(socketServerRxCb)
       {
-        socketServerRxCb(clinetFd);
+        socketServerRxCb(clientFd);
       }
              
     } 
     if (revent & POLLRDHUP)
     {
       //its a shut down close the socket
-      //printf("Client fd:%d disconnected\n", clinetFd); 
+//      printf("Client fd:%d disconnected\n", clientFd); 
+
+//todo: use a callback instead.
+	  if ((SocketBootloadingState != SOCKET_BOOTLOADING_STATE_IDLE) && (clientFd == bootloader_initiator_clientFd))
+	  {
+	  	SRPC_killLoadingImage( );
+		printf("Image download aborted by client disconnection\n");
+	  }
       
       //remove the record and close the socket
-      deleteSocketRec(clinetFd);              
+      deleteSocketRec(clientFd);              
     }     
   }
    
@@ -421,7 +438,7 @@ int32 socketSeverSend(uint8* buf, uint32 len, int32 fdClient)
  */
 int32 socketSeverSendAllclients(uint8* buf, uint32 len)
 { 
-  int rtn, cnt=0;
+  int rtn;
   socketRecord_t *srchRec;
    
   // first client socket
@@ -430,7 +447,7 @@ int32 socketSeverSendAllclients(uint8* buf, uint32 len)
   // Stop when at the end or max is reached
   while ( srchRec )
   { 
-    //printf("SRPC_Send: client %d\n", cnt++);
+//    printf("SRPC_Send: client %d\n", cnt++);
     rtn = write(srchRec->socketFd, buf, len);
     if (rtn < 0) 
     {

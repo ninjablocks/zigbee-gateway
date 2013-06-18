@@ -75,17 +75,39 @@ static uint8_t SRPC_getScenes(uint8_t *pBuf, uint32 clientFd);
 static uint8_t SRPC_storeScene(uint8_t *pBuf, uint32 clientFd);
 static uint8_t SRPC_recallScene(uint8_t *pBuf, uint32 clientFd);
 static uint8_t SRPC_identifyDevice(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_removeDevice(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_close(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getDevices(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_getDeviceTemp(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_getDevicePower(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_getDeviceHumid(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_notSupported(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_sblDownloadImage(uint8_t *pBuf, uint32 clientFd);
+static uint8_t SRPC_sblAbort(uint8_t *pBuf, uint32 clientFd);
+static uint8_t SRPC_changeDeviceName(uint8_t *pBuf, uint32 clientFd);
+static uint8_t SRPC_removeDevice(uint8_t *pBuf, uint32_t clientFd);
 
 //SRPC Interface call back functions
 static void SRPC_CallBack_addGroupRsp(uint16_t groupId, char *nameStr, uint32 clientFd);
 static void SRPC_CallBack_addSceneRsp(uint16_t groupId, uint8_t sceneId, char *nameStr, uint32 clientFd);
 
+static void srpcSend(uint8_t* srpcMsg, int fdClient);
+static void srpcSendAll(uint8_t* srpcMsg);
+
+
+//local definitions
+
+#define SOCKET_BOOTLOADING_STATE_IDLE 0
+#define SOCKET_BOOTLOADING_STATE_ACTIVE 1
+
+
+//type definitions
+
 typedef uint8_t (*rpcsProcessMsg_t)(uint8_t *pBuf, uint32_t clientFd);
 
-rpcsProcessMsg_t rpcsProcessIncoming[] =
+//global constants
+
+const rpcsProcessMsg_t rpcsProcessIncoming[] =
 {
   SRPC_close,           //SRPC_CLOSE
   SRPC_getDevices,      //SRPC_GET_DEVICES     
@@ -95,24 +117,30 @@ rpcsProcessMsg_t rpcsProcessIncoming[] =
   SRPC_getDeviceState,  //SRPC_GET_DEV_STATE     
   SRPC_getDeviceLevel,  //SRPC_GET_DEV_LEVEL     
   SRPC_getDeviceHue,    //SRPC_GET_DEV_HUE  
-  SRPC_getDeviceSat,    //SRPC_GET_DEV_HUE        
+  SRPC_getDeviceSat,    //SRPC_GET_DEV_SAT        
   SRPC_bindDevices,     //SRPC_BIND_DEVICES      
-  SRPC_notSupported,    //SRPC_GET_THERM_READING 
-  SRPC_notSupported,    //SRPC_GET_POWER_READING 
+  SRPC_getDeviceTemp,   //SRPC_GET_THERM_READING 
+  SRPC_getDevicePower,  //SRPC_GET_POWER_READING 
   SRPC_notSupported,    //SRPC_DISCOVER_DEVICES  
   SRPC_notSupported,    //SRPC_SEND_ZCL          
   SRPC_getGroups,       //SRPC_GET_GROUPS    
   SRPC_addGroup,        //SRPC_ADD_GROUP     
   SRPC_getScenes,       //SRPC_GET_SCENES    
-  SRPC_storeScene,       //SRPC_STORE_SCENE       
+  SRPC_storeScene,      //SRPC_STORE_SCENE       
   SRPC_recallScene,     //SRPC_RECALL_SCENE      
   SRPC_identifyDevice,  //SRPC_IDENTIFY_DEVICE   
-  SRPC_notSupported,    //SRPC_CHANGE_DEVICE_NAME  
-  SRPC_notSupported,    //SRPC_REMOVE_DEVICE             
+  SRPC_changeDeviceName,//RPCS_CHANGE_DEVICE_NAME  
+  SRPC_removeDevice,    //SRPC_REMOVE_DEVICE    
+  SRPC_getDeviceHumid,  //SRPC_GET_HUMID_READING            
+  SRPC_sblDownloadImage, //SRPC_SBL_DOWNLOAD_IMAGE
+  SRPC_sblAbort, //SRPC_SBL_ABORT
 };
 
-static void srpcSend(uint8_t* srpcMsg, int fdClient);
-static void srpcSendAll(uint8_t* srpcMsg);
+//global variables
+
+uint32 bootloader_initiator_clientFd;
+uint16_t SocketBootloadingState = SOCKET_BOOTLOADING_STATE_IDLE;
+
 
 /***************************************************************************************************
  * @fn      srpcParseEpInfp - Parse epInfo and prepare the SRPC message.
@@ -128,7 +156,7 @@ static uint8_t* srpcParseEpInfo(epInfo_t* epInfo)
   uint8_t *pSrpcMessage, *pTmp, devNameLen = 1, pSrpcMessageLen;  
 
   //printf("srpcParseEpInfo++\n");   
-      
+   
   //RpcMessage contains function ID param Data Len and param data
   if( epInfo->deviceName )
   {
@@ -137,7 +165,7 @@ static uint8_t* srpcParseEpInfo(epInfo_t* epInfo)
   
   //sizre of EP infor - the name char* + num bytes of device name (byte 0 being len on name str)
   pSrpcMessageLen = sizeof(epInfo_t) - sizeof(char*) + devNameLen;
-  pSrpcMessage = malloc(pSrpcMessageLen + 2);  
+  pSrpcMessage = malloc(pSrpcMessageLen + 2);
   
   pTmp = pSrpcMessage;
   
@@ -156,8 +184,9 @@ static uint8_t* srpcParseEpInfo(epInfo_t* epInfo)
     *pTmp++ = LO_UINT16(epInfo->deviceID);
     *pTmp++ = HI_UINT16(epInfo->deviceID);
     *pTmp++ = epInfo->version;  
+    
     if( epInfo->deviceName )
-    {
+    {    
       for(i = 0; i < (epInfo->deviceName[0] + 1); i++)
       {
         *pTmp++ = epInfo->deviceName[i];
@@ -175,7 +204,6 @@ static uint8_t* srpcParseEpInfo(epInfo_t* epInfo)
       *pTmp++ = epInfo->IEEEAddr[i];
     }
   }
-      
   //printf("srpcParseEpInfp--\n");
 
   return pSrpcMessage;
@@ -224,8 +252,170 @@ static void srpcSendAll(uint8_t* srpcMsg)
 }
 
 
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_loadImageRsp
+ *
+ * @brief   
+  *
+ * @return  
+ ***************************************************************************************************/
+void SRPC_CallBack_loadImageRsp(uint8_t result, uint32 clientFd)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+  pSrpcMessage = malloc(2 + 1);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_SBL_RSP;
+
+  //param size
+  *pBuf++ = 1;
+  
+  *pBuf++ = result;
+        
+  printf("SRPC_CallBack_loadImageRsp: result=%d\n", result);
+
+  //Send SRPC
+  srpcSend(pSrpcMessage, clientFd);  
+
+  if ((result != SBL_PENDING) && (clientFd == bootloader_initiator_clientFd))
+  {
+  	SocketBootloadingState = SOCKET_BOOTLOADING_STATE_IDLE;
+  }
+                  
+  return;              
+}
+
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_SendProgressReport
+ *
+ * @brief   
+  *
+ * @return  
+ ***************************************************************************************************/
+void SRPC_CallBack_SendProgressReport(uint8_t phase, uint32_t location, uint32 clientFd)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+  pSrpcMessage = malloc(2 + 5);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_SBL_PROGRESS;
+
+  //param size
+  *pBuf++ = 5;
+  
+  *pBuf++ = phase;
+        
+  *pBuf++ = (location >> 0) % 0xFF;
+  *pBuf++ = (location >> 8) % 0xFF;
+  *pBuf++ = (location >> 16) % 0xFF;
+  *pBuf++ = (location >> 24) % 0xFF;
+
+  printf("SRPC_CallBack_loadImageProgress: phase=%d, location=0x%08X\n", phase, location);
+
+  //Send SRPC
+  srpcSend(pSrpcMessage, clientFd);  
+
+  return;              
+}
+
+
 /*********************************************************************
- * @fn          RPSC_ProcessIncoming
+ * @fn          SRPC_sblDownloadImage
+ *
+ * @brief       This function loads an existing image from the Host filesystem to the ZigBee device.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_sblDownloadImage(uint8_t *pBuf, uint32 clientFd)
+{
+  uint16_t filenameLength;
+  uint8_t progressReportingInterval;
+  char * filename;
+
+  pBuf+=2; //increment past SRPC header
+  filenameLength = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf+=2;
+  progressReportingInterval = *pBuf++;
+  //todo: verify that the actual received packet is long enough to contain the filename of the length reported.
+  filename = (char *)pBuf;
+  filename[filenameLength] = '\0'; //todo: make sure pBuf is long enough to contain this extra character
+
+  if (SocketBootloadingState != SOCKET_BOOTLOADING_STATE_IDLE)
+  {
+	SRPC_CallBack_loadImageRsp(SBL_BUSY, clientFd);
+  } 
+  else if (zbSocSblInitiateImageDownload(filename, progressReportingInterval) == SUCCESS)
+  {
+    SocketBootloadingState = SOCKET_BOOTLOADING_STATE_ACTIVE;
+	bootloader_initiator_clientFd = clientFd;
+
+    SRPC_CallBack_loadImageRsp(SBL_PENDING, clientFd);
+  }
+  else
+  {
+    SRPC_CallBack_loadImageRsp(SBL_ERROR_OPENING_FILE, clientFd);
+  }
+
+  return 0;
+}
+
+
+/***************************************************************************************************
+ * @fn      SRPC_killLoadingImage
+ *
+ * @brief   
+  *
+ * @return  
+ ***************************************************************************************************/
+void SRPC_killLoadingImage(void)
+{
+	zbSocFinishLoadingImage();
+	SocketBootloadingState = SOCKET_BOOTLOADING_STATE_IDLE;
+}
+
+
+/*********************************************************************
+ * @fn          SRPC_sblAbort
+ *
+ * @brief
+ *
+ * @return
+ */
+static uint8_t SRPC_sblAbort(uint8_t *pBuf, uint32 clientFd)
+{
+	if (SocketBootloadingState != SOCKET_BOOTLOADING_STATE_IDLE)
+	{
+		SRPC_killLoadingImage( );
+		if (clientFd == bootloader_initiator_clientFd)
+		{
+			SRPC_CallBack_loadImageRsp(SBL_ABORTED_BY_USER, clientFd);
+		}
+		else
+		{
+			SRPC_CallBack_loadImageRsp(SBL_REMOTE_ABORTED_BY_USER, clientFd);
+			SRPC_CallBack_loadImageRsp(SBL_ABORTED_BY_ANOTHER_USER , bootloader_initiator_clientFd);
+		}
+	}
+	else
+	{
+		SRPC_CallBack_loadImageRsp(SBL_NO_ACTIVE_DOWNLOAD, clientFd);
+	}
+
+	return 0;
+}
+
+
+/*********************************************************************
+ * @fn          SRPC_ProcessIncoming
  *
  * @brief       This function processes incoming messages.
  *
@@ -233,11 +423,11 @@ static void srpcSendAll(uint8_t* srpcMsg)
  *
  * @return      afStatus_t
  */
-void RPSC_ProcessIncoming(uint8_t *pBuf, uint32_t clientFd)
+void SRPC_ProcessIncoming(uint8_t *pBuf, uint32_t clientFd)
 {
   rpcsProcessMsg_t func;
   
-  //printf("RPSC_ProcessIncoming++[%x]\n", pBuf[SRPC_FUNC_ID]);
+//  printf("SRPC_ProcessIncoming++[%x]\n", pBuf[SRPC_FUNC_ID]);
   /* look up and call processing function */
   func = rpcsProcessIncoming[(pBuf[SRPC_FUNC_ID] & ~(0x80))];
   if (func)
@@ -249,7 +439,7 @@ void RPSC_ProcessIncoming(uint8_t *pBuf, uint32_t clientFd)
     //printf("Error: no processing function for CMD 0x%x\n", pBuf[SRPC_FUNC_ID]); 
   }
   
-  //printf("RPSC_ProcessIncoming--\n");
+  //printf("SRPC_ProcessIncoming--\n");
 }
 
 /*********************************************************************
@@ -340,17 +530,19 @@ static uint8_t SRPC_storeScene(uint8_t *pBuf, uint32 clientFd)
   pBuf += 2;
   
   nameLen = *pBuf++;
-  nameStr = malloc(nameLen + 1);
+  nameStr = malloc(nameLen + 2);
   nameStr[0] = nameLen;
   int i;
   for(i = 0; i < nameLen; i++)
   {
     nameStr[i+1] = *pBuf++;
   } 
+  nameStr[nameLen + 1] = '\0';
   
-  //printf("SRPC_storeScene++: name[%d] %s, group %d \n", nameLen, nameStr, groupId);
-      
   sceneId = sceneListAddScene( nameStr, groupId );
+
+//  printf("SRPC_storeScene++: name[%d] %s, group %d, scene %d \n", nameLen, nameStr + 1, groupId, sceneId);
+
   zbSocStoreScene(groupId, sceneId, dstAddr, endpoint, addrMode);
   SRPC_CallBack_addSceneRsp(groupId, sceneId, nameStr, clientFd);
 
@@ -396,17 +588,19 @@ static uint8_t SRPC_recallScene(uint8_t *pBuf, uint32 clientFd)
   pBuf += 2;
     
   nameLen = *pBuf++;
-  nameStr = malloc(nameLen + 1);
+  nameStr = malloc(nameLen + 2);
   nameStr[0] = nameLen;
   int i;
   for(i = 0; i < nameLen; i++)
   {
     nameStr[i+1] = *pBuf++;
   } 
+  nameStr[nameLen+1] = '\0';
   
-  //printf("SRPC_recallScene++: name[%d] %s, group %d \n", nameLen, nameStr, groupId);
-    
   sceneId = sceneListGetSceneId( nameStr, groupId );
+
+//  printf("SRPC_recallScene++: name[%d] %s, group %d, scene %d \n", nameLen + 1, nameStr, groupId, sceneId);
+
   zbSocRecallScene(groupId, sceneId, dstAddr, endpoint, addrMode);
 
   free(nameStr);
@@ -458,6 +652,87 @@ static uint8_t SRPC_identifyDevice(uint8_t *pBuf, uint32_t clientFd)
   return 0;
 }
 
+
+/*********************************************************************
+ * @fn          SRPC_changeDeviceName
+ *
+ * @brief       This function exposes an interface to set a bind devices.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_changeDeviceName(uint8_t *pBuf, uint32 clientFd)
+{  
+  uint16_t devNwkAddr;
+  uint8_t devEndpoint;
+  uint8 nameLen;
+  char *nameStr;
+   
+  printf("RSPC_ZLL_changeDeviceName++\n");   
+        
+  //increment past SRPC header
+  pBuf+=2;  
+  
+  /* Src Address */
+  devNwkAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
+  pBuf += 2;  
+
+  devEndpoint = *pBuf++;
+  
+  nameLen = *pBuf++;
+  nameStr = malloc(nameLen + 1);
+  nameStr[0] = nameLen;
+  int i;
+  for(i = 0; i < nameLen; i++)
+  {
+    nameStr[i+1] = *pBuf++;
+  }       
+        
+  devListChangeDeviceName(devNwkAddr, devEndpoint, nameStr);
+
+  return 0;
+}
+
+
+/*********************************************************************
+ * @fn          uint8_t SRPC_removeDevice(uint8_t *pBuf, uint32_t clientFd)
+ *
+ * @brief       This function exposes an interface to remove a device.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_removeDevice(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint16_t devNwkAddr;
+  uint8_t devEndpoint;
+  uint8 devIEEE[8];
+
+
+
+  printf("RSPC_ZLL_removeDevice++\n");   
+        
+  //increment past SRPC header
+  pBuf+=2;  
+  
+  /* Src Address */
+  devNwkAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
+  pBuf += 2;  
+
+  devEndpoint = *pBuf++;
+  
+  memcpy(devIEEE, pBuf, Z_EXTADDR_LEN);
+  pBuf += Z_EXTADDR_LEN;       
+    
+  zbSocRemoveDevice(devIEEE); //make the device leave network (if not already gone)
+
+  devListRemoveDevice(devNwkAddr, devEndpoint);
+                                    
+  return 0;
+} 
+
 /*********************************************************************
  * @fn          SRPC_bindDevices
  *
@@ -469,37 +744,58 @@ static uint8_t SRPC_identifyDevice(uint8_t *pBuf, uint32_t clientFd)
  */
 uint8_t SRPC_bindDevices(uint8_t *pBuf, uint32 clientFd)
 {  
-  uint16_t srcNwkAddr;
-  uint8_t srcEndpoint;
-  uint8 srcIEEE[8];
-  uint8_t dstEndpoint;
-  uint8 dstIEEE[8];
-  uint16 clusterId;
+  afAddrType_t dstAddrA; 
+  uint8_t ieeA[8]; 
+  afAddrType_t dstAddrB; 
+  uint8_t ieeB[8]; 
+  uint16_t clusterId;
    
   //printf("SRPC_bindDevices++\n");   
         
   //increment past SRPC header
   pBuf+=2;  
   
-  /* Src Address */
-  srcNwkAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
-  pBuf += 2;  
-
-  srcEndpoint = *pBuf++;
-  
-  memcpy(srcIEEE, pBuf, Z_EXTADDR_LEN);
+  /* Destination Address A*/
+  dstAddrA.addrMode = (afAddrMode_t)*pBuf++;   
+  if ( dstAddrA.addrMode == (afAddrMode_t) afAddr64Bit )
+  {
+    memcpy( dstAddrA.addr.extAddr, pBuf, Z_EXTADDR_LEN );
+  }
+  else
+  {
+    dstAddrA.addr.shortAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
+  }
+  /* The short address occupies LSB two bytes */
   pBuf += Z_EXTADDR_LEN;  
 
-  dstEndpoint = *pBuf++;
+  dstAddrA.endPoint = *pBuf++;
+  
+  memcpy(ieeA, pBuf, Z_EXTADDR_LEN);
+  pBuf += Z_EXTADDR_LEN;  
+
+  /* Destination Address B*/
+  dstAddrB.addrMode = (afAddrMode_t)*pBuf++;   
+  if ( dstAddrB.addrMode == (afAddrMode_t) afAddr64Bit )
+  {
+    memcpy( dstAddrB.addr.extAddr, pBuf, Z_EXTADDR_LEN );
+  }
+  else
+  {
+    dstAddrB.addr.shortAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
+  }
+  /* The short address occupies LSB two bytes */
+  pBuf += Z_EXTADDR_LEN;
+
+  dstAddrB.endPoint = *pBuf++;
     
-  memcpy(dstIEEE, pBuf, Z_EXTADDR_LEN);
+  memcpy(ieeB, pBuf, Z_EXTADDR_LEN);
   pBuf += Z_EXTADDR_LEN;   
   
   clusterId = BUILD_UINT16(pBuf[0], pBuf[1]);
   pBuf += 2;     
   
-  zbSocBind(srcNwkAddr, srcEndpoint, srcIEEE, dstEndpoint, dstIEEE, clusterId);
-
+  //TODO: implement zbSocBind
+  
   return 0;
 }
 
@@ -532,7 +828,7 @@ static uint8_t SRPC_setDeviceState(uint8_t *pBuf, uint32_t clientFd)
   
   state = (bool)*pBuf;
   
-  //printf("SRPC_setDeviceState: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x, state=%x\n", dstAddr, endpoint, addrMode, state); 
+//  printf("SRPC_setDeviceState: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x, state=%x\n", dstAddr, endpoint, addrMode, state); 
     
   // Set light state on/off
   zbSocSetState(state, dstAddr, endpoint, addrMode);
@@ -575,7 +871,7 @@ static uint8_t SRPC_setDeviceLevel(uint8_t *pBuf, uint32_t clientFd)
   transitionTime = BUILD_UINT16(pBuf[0], pBuf[1]);  
   pBuf += 2;
   
-  //printf("SRPC_setDeviceLevel: dstAddr.addr.shortAddr=%x ,level=%x, tr=%x \n", dstAddr, level, transitionTime); 
+//  printf("SRPC_setDeviceLevel: dstAddr.addr.shortAddr=%x ,level=%x, tr=%x \n", dstAddr, level, transitionTime); 
     
   zbSocSetLevel(level, transitionTime, dstAddr, endpoint, addrMode);
   
@@ -619,7 +915,7 @@ static uint8_t SRPC_setDeviceColor(uint8_t *pBuf, uint32_t clientFd)
   transitionTime = BUILD_UINT16(pBuf[0], pBuf[1]);  
   pBuf += 2;
   
-  //printf("SRPC_setDeviceColor: dstAddr=%x ,hue=%x, saturation=%x, tr=%x \n", dstAddr, hue, saturation, transitionTime); 
+//  printf("SRPC_setDeviceColor: dstAddr=%x ,hue=%x, saturation=%x, tr=%x \n", dstAddr, hue, saturation, transitionTime); 
     
   zbSocSetHueSat(hue, saturation, transitionTime, dstAddr, endpoint, addrMode);
   
@@ -654,7 +950,7 @@ static uint8_t SRPC_getDeviceState(uint8_t *pBuf, uint32_t clientFd)
   // index past panId
   pBuf += 2;
   
-  //printf("SRPC_getDeviceState: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x", dstAddr, endpoint, addrMode); 
+//  printf("SRPC_getDeviceState: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x", dstAddr, endpoint, addrMode); 
     
   // Get light state on/off
   zbSocGetState(dstAddr, endpoint, addrMode);
@@ -690,7 +986,7 @@ static uint8_t SRPC_getDeviceLevel(uint8_t *pBuf, uint32_t clientFd)
   // index past panId
   pBuf += 2;
   
-  //printf("SRPC_getDeviceLevel: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+//  printf("SRPC_getDeviceLevel: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
     
   // Get light level
   zbSocGetLevel(dstAddr, endpoint, addrMode);
@@ -726,7 +1022,7 @@ static uint8_t SRPC_getDeviceHue(uint8_t *pBuf, uint32_t clientFd)
   // index past panId
   pBuf += 2;
   
-  //printf("SRPC_getDeviceHue: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+//  printf("SRPC_getDeviceHue: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
     
   // Get light hue
   zbSocGetHue(dstAddr, endpoint, addrMode);
@@ -762,12 +1058,121 @@ static uint8_t SRPC_getDeviceSat(uint8_t *pBuf, uint32_t clientFd)
   // index past panId
   pBuf += 2;
   
-  //printf("SRPC_getDeviceSat: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+//  printf("SRPC_getDeviceSat: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
     
   // Get light sat
   zbSocGetSat(dstAddr, endpoint, addrMode);
 
   //printf("SRPC_getDeviceSat--\n");
+  
+  return 0;
+}
+
+/*********************************************************************
+ * @fn          SRPC_getDeviceTemp
+ *
+ * @brief       This function exposes an interface to get a devices temp attribute.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_getDeviceTemp(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t endpoint, addrMode;
+  uint16_t dstAddr;
+ 
+  //printf("SRPC_getDeviceTemp++\n");
+       
+  //increment past SRPC header
+  pBuf+=2;
+
+  addrMode = (afAddrMode_t)*pBuf++;   
+  dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf += Z_EXTADDR_LEN;
+  endpoint = *pBuf++;
+  // index past panId
+  pBuf += 2;
+  
+  printf("SRPC_getDeviceTemp: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+    
+  // Get light sat
+  zbSocGetTemp(dstAddr, endpoint, addrMode);
+
+  //printf("SRPC_getDeviceTemp--\n");
+  
+  return 0;
+}
+
+
+/*********************************************************************
+ * @fn          SRPC_getDeviceHumid
+ *
+ * @brief       This function exposes an interface to get a devices humidity attribute.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_getDeviceHumid(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t endpoint, addrMode;
+  uint16_t dstAddr;
+ 
+  //printf("SRPC_getDeviceHumid++\n");
+       
+  //increment past SRPC header
+  pBuf+=2;
+
+  addrMode = (afAddrMode_t)*pBuf++;   
+  dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf += Z_EXTADDR_LEN;
+  endpoint = *pBuf++;
+  // index past panId
+  pBuf += 2;
+  
+  printf("SRPC_getDeviceHumid: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+    
+  // Get light sat
+  zbSocGetHumid(dstAddr, endpoint, addrMode);
+
+  //printf("SRPC_getDeviceHumid--\n");
+  
+  return 0;
+}
+
+/*********************************************************************
+ * @fn          SRPC_getDevicePower
+ *
+ * @brief       This function exposes an interface to get a devices sat attribute.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_getDevicePower(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t endpoint, addrMode;
+  uint16_t dstAddr;
+ 
+  printf("SRPC_getDevicePower++\n");
+       
+  //increment past SRPC header
+  pBuf+=2;
+
+  addrMode = (afAddrMode_t)*pBuf++;   
+  dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf += Z_EXTADDR_LEN;
+  endpoint = *pBuf++;
+  // index past panId
+  pBuf += 2;
+  
+  printf("SRPC_getDevicePower: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+    
+  // Get light sat
+  zbSocGetPower(dstAddr, endpoint, addrMode);
+
+  printf("SRPC_getDevicePower--\n");
   
   return 0;
 }
@@ -1163,6 +1568,182 @@ void SRPC_CallBack_getSatRsp(uint8_t sat, uint16_t srcAddr, uint8_t endpoint, ui
   return;              
 }
 
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_getTempRsp
+ *
+ * @brief   Sends the get Temp Rsp to the client that sent a get sat
+  *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_getTempRsp(uint16_t temp, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+  //printf("SRPC_CallBack_getTempRsp++\n");
+  
+  printf("SRPC_CallBack_getTempRsp: malloc'ing %d bytes\n", 2 + 4);
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + 5);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_TEMP_READING;
+  //param size
+  *pBuf++ = 5;
+  
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;   
+  *pBuf++ = temp & 0xFF;
+  *pBuf++ = (temp & 0xFF00) >> 8;   
+        
+  //printf("SRPC_CallBack_getTempRsp: temp=%x\n", temp);
+  
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);  
+
+  //printf("SRPC_CallBack_getSatRsp--\n");
+                    
+  return;              
+}
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_getHumidRsp
+ *
+ * @brief   Sends the get Humid Rsp to the client that sent a get sat
+  *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_getHumidRsp(uint16_t humid, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+  //printf("SRPC_CallBack_getHumidRsp++\n");
+  
+  printf("SRPC_CallBack_getHumidRsp: malloc'ing %d bytes\n", 2 + 4);
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + 5);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_HUMID_READING;
+  //param size
+  *pBuf++ = 5;
+  
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;   
+  *pBuf++ = humid & 0xFF;
+  *pBuf++ = (humid & 0xFF00) >> 8;   
+        
+  //printf("SRPC_CallBack_getHumidRsp: temp=%x\n", humid);
+  
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);  
+
+  //printf("SRPC_CallBack_getHumidRsp--\n");
+                    
+  return;              
+}
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_getPowerRsp
+ *
+ * @brief   Sends the get Power Rsp to the client that sent a get sat
+  *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_getPowerRsp(uint32_t power, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+  //printf("SRPC_CallBack_getPowerRsp++\n");
+  
+  printf("SRPC_CallBack_getPowerRsp: malloc'ing %d bytes\n", 2 + 7);
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + 7);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_POWER_READING;
+  //param size
+  *pBuf++ = 7;
+  
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;   
+  *pBuf++ = power & 0xFF;
+  *pBuf++ = (power & 0xFF00) >> 8;   
+  *pBuf++ = (power & 0xFF0000) >> 16;   
+  *pBuf++ = (power & 0xFF000000) >> 24;   
+
+        
+  //printf("SRPC_CallBack_getPowerRsp: power=%x\n", power);
+  
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);  
+
+  //printf("SRPC_CallBack_getPowerRsp--\n");
+                    
+  return;              
+}
+
+void SRPC_CallBack_bootloadingDone(uint8_t result)
+{
+	SRPC_CallBack_loadImageRsp(result, bootloader_initiator_clientFd);
+}
+
+
+void SRPC_CallBack_loadImageProgress(uint8_t phase, uint32_t location)
+{
+	SRPC_CallBack_SendProgressReport(phase, location, bootloader_initiator_clientFd);
+}
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_zoneSateInd
+ *
+ * @brief   Sends the get Power Rsp to the client that sent a get sat
+  *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_zoneSateInd(uint32_t zoneState, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+  //printf("SRPC_CallBack_zoneSateInd++\n");
+  
+  //printf("SRPC_CallBack_zoneSateInd: malloc'ing %d bytes\n", 2 + 7);
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + 7);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_ZONESTATE_CHANGE;
+  //param size
+  *pBuf++ = 7;
+  
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;   
+  *pBuf++ = zoneState & 0xFF;
+  *pBuf++ = (zoneState & 0xFF00) >> 8;   
+  *pBuf++ = (zoneState & 0xFF0000) >> 16;   
+  *pBuf++ = (zoneState & 0xFF000000) >> 24;   
+
+        
+  printf("SRPC_CallBack_zoneSateInd: zoneState=%x\n", zoneState);
+  
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);  
+
+  //printf("SRPC_CallBack_zoneSateInd--\n");
+                    
+  return;              
+}
 
 void error(const char *msg)
 {
@@ -1256,7 +1837,6 @@ uint8_t RSPC_SendEpInfo(epInfo_t *epInfo)
   //Send SRPC
   srpcSendAll(pSrpcMessage);  
   free(pSrpcMessage); 
-  
   printf("RSPC_SendEpInfo--\n");
   
   return 0;  
@@ -1329,7 +1909,7 @@ void SRPC_RxCB( int clientFd )
     if (byteRead < 0) error("SRPC ERROR: error reading from socket\n");
     if (byteRead < buffer[SRPC_MSG_LEN]) error("SRPC ERROR: full message not read\n");         
     //printf("Read the message[%x]\n",byteRead);
-    RPSC_ProcessIncoming((uint8_t*)buffer, clientFd);
+    SRPC_ProcessIncoming((uint8_t*)buffer, clientFd);
   }
   
   //printf("SRPC_RxCB--\n");

@@ -1,5 +1,5 @@
 /**************************************************************************************************
- * Filename:       zbSocController.c
+ * Filename:       zll_controller.c
  * Description:    This file contains the interface to the UART.
  *
  *
@@ -40,11 +40,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <poll.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "zbSocCmd.h"
 #include "interface_devicelist.h"
 #include "interface_grouplist.h"
 #include "interface_scenelist.h"
+#include "interface_srpcserver.h"
+#include "socket_server.h"
 
 uint8_t zclTlIndicationCb(epInfo_t *epInfo);
 uint8_t zclNewDevIndicationCb(epInfo_t *epInfo);
@@ -52,6 +56,12 @@ uint8_t zclGetStateCb(uint8_t state, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetLevelCb(uint8_t level, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetHueCb(uint8_t hue, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetSatCb(uint8_t sat, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclGetTempCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclGetPowerCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclGetHumidCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclZoneSateChangeCb(uint32_t zoneState, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t SblDoneCb(uint8_t status);
+uint8_t SblReportingCb(uint8_t phase, uint32_t location);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -61,10 +71,18 @@ static zbSocCallbacks_t zbSocCbs =
   zclGetLevelCb,          //pfnZclGetLevelCb_t - ZCL response callback for get Level
   zclGetHueCb,            // pfnZclGetHueCb - ZCL response callback for get Hue
   zclGetSatCb,            //pfnZclGetSatCb - ZCL response callback for get Sat
+  zclGetTempCb,           //pfnZclGetTempCb - ZCL response callback for get Temp
+  zclGetPowerCb,          //pfnZclGetPowerCb - ZCL response callback for get Power
+  zclGetHumidCb,           //pfnZclGetTempCb - ZCL response callback for get Temp 
+  zclZoneSateChangeCb,     //pfnZclZoneSateChangeCb - ZCL Command indicating Alarm Zone State Change
+  SblDoneCb, 	   //pfnBootloadingDoneCb - Bootloader processing ended
+  SblReportingCb, 	   //pfnBootloadingProgressReportingCb - Bootloader progress reporting
 };
 
-#include "interface_srpcserver.h"
-#include "socket_server.h"
+
+uint8_t uartDebugPrintsEnabled = 0;
+int current_poll_timeout = -1;
+
 
 void usage( char* exeName )
 {
@@ -72,28 +90,36 @@ void usage( char* exeName )
     printf("Eample: ./%s /dev/ttyACM0\n", exeName);
 }
 
+
 int main(int argc, char* argv[])
 {
   int retval = 0;
-  int zbSoc_fd;    
+  char * selected_serial_port;
  
   printf("%s -- %s %s\n", argv[0], __DATE__, __TIME__ );
  
   // accept only 1
-  if( argc != 2 )
+  if( argc < 2 )
   {
     usage(argv[0]);
     printf("attempting to use /dev/ttyACM0\n");
-    zbSoc_fd = zbSocOpen( "/dev/ttyACM0" );        
+	selected_serial_port = "/dev/ttyACM0";
   }
   else
   {
-    zbSoc_fd = zbSocOpen( argv[1] );       
+  	selected_serial_port = argv[1];
   }
+  zbSocOpen( selected_serial_port );
+  zbSocForceRun(); //skip the bootloader wait period
   
-  if( zbSoc_fd == -1 )
+  if( serialPortFd == -1 )
   {
     exit(-1);
+  }
+
+  if (argc > 2)
+  {
+  	uartDebugPrintsEnabled = atoi(argv[2]);
   }
 
   //printf("%s: restoring device, group and scene lists\n", argv[0]);
@@ -108,18 +134,18 @@ int main(int argc, char* argv[])
   {          
     int numClientFds = socketSeverGetNumClients(); 
     
-	  //poll on client socket fd's and the zbSoC serial port for any activity
+	  //poll on client socket fd's and the ZllSoC serial port for any activity
 		if(numClientFds)
 		{
 		  int pollFdIdx;  		   
 		  int *client_fds = malloc(  numClientFds * sizeof( int ) );
-		  //socket client FD's + zbSoC serial port FD
+		  //socket client FD's + serialPortFd serial port FD
 		  struct pollfd *pollFds = malloc(  ((numClientFds + 1) * sizeof( struct pollfd )) );
 		  
 		  if(client_fds && pollFds)	
 		  {
-		    //set the zbSoC serial port FD in the poll file descriptors
-		    pollFds[0].fd = zbSoc_fd;
+		    //set the serialPortFd serial port FD in the poll file descriptors
+		    pollFds[0].fd = serialPortFd;
   			pollFds[0].events = POLLIN;
   			
 		    //Set the socket file descriptors  		    
@@ -133,11 +159,11 @@ int main(int argc, char* argv[])
 
         printf("%s: waiting for poll()\n", argv[0]);
 
-        poll(pollFds, (numClientFds+1), -1); 
-        
+        poll(pollFds, (numClientFds+1), current_poll_timeout);
+
         //printf("%s: got poll()\n", argv[0]);
         
-        //did the poll unblock because of the zbSoC serial?
+        //did the poll unblock because of the zllSoC serial?
         if(pollFds[0].revents)
         {
           printf("Message from ZigBee SoC\n");
@@ -152,11 +178,20 @@ int main(int argc, char* argv[])
             socketSeverPoll(pollFds[pollFdIdx].fd, pollFds[pollFdIdx].revents);
           }
         }          
-    		  	  
-  		  free( client_fds );	  
-  		  free( pollFds );	  		
-		  }
-		}  		           
+		
+        if (zbSocHandleTimers())
+        {
+          current_poll_timeout = BOOTLOADER_TIMEOUT / 10;
+        }
+        else
+        {
+          current_poll_timeout = -1;
+        }
+        	  
+        free( client_fds );	  
+        free( pollFds );	  		
+        }
+      }  		           
   }    
 
   return retval;
@@ -198,5 +233,57 @@ uint8_t zclGetSatCb(uint8_t sat, uint16_t nwkAddr, uint8_t endpoint)
 {
   SRPC_CallBack_getSatRsp(sat, nwkAddr, endpoint, 0);
   return 0;  
+}
+
+uint8_t zclGetTempCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint)
+{
+  SRPC_CallBack_getTempRsp(temp, nwkAddr, endpoint, 0);
+  
+  printf("\nzclGetTempCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    temp   : %02x\n\n", 
+    nwkAddr, endpoint, temp); 
+  
+  return 0;  
+}
+
+uint8_t zclGetPowerCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint)
+{
+  SRPC_CallBack_getPowerRsp(power, nwkAddr, endpoint, 0);
+
+  printf("\nzclGetPowerCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    power   : %02x\n\n", 
+    nwkAddr, endpoint, power); 
+  
+  return 0;  
+}
+
+uint8_t zclGetHumidCb(uint16_t Humid, uint16_t nwkAddr, uint8_t endpoint)
+{
+  SRPC_CallBack_getHumidRsp(Humid, nwkAddr, endpoint, 0);
+  
+  printf("\nzclGetTempCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    Humid   : %02x\n\n", 
+    nwkAddr, endpoint, Humid); 
+  
+  return 0; 
+} 
+
+uint8_t zclZoneSateChangeCb(uint32_t zoneState, uint16_t nwkAddr, uint8_t endpoint)
+{
+  SRPC_CallBack_zoneSateInd(zoneState, nwkAddr, endpoint, 0);
+  
+  printf("\nzclZoneSateChangeCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    zoneState   : %02x\n\n", 
+    nwkAddr, endpoint, zoneState); 
+  
+  return 0; 
+}
+
+uint8_t SblDoneCb(uint8_t status)
+{
+	SRPC_CallBack_bootloadingDone(status);
+	return 0;
+}
+
+uint8_t SblReportingCb(uint8_t phase, uint32_t location)
+{
+	SRPC_CallBack_loadImageProgress(phase, location);
+	return 0;
 }
 
