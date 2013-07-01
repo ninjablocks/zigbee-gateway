@@ -65,7 +65,7 @@ void SRPC_killLoadingImage(void);
 extern uint16_t SocketBootloadingState;
 extern uint32 bootloader_initiator_clientFd;
 
-
+ 
 /*********************************************************************
  * TYPEDEFS
  */ 
@@ -447,7 +447,7 @@ int32 socketSeverSendAllclients(uint8* buf, uint32 len)
   // Stop when at the end or max is reached
   while ( srchRec )
   { 
-//    printf("SRPC_Send: client %d\n", cnt++);
+    //printf("SRPC_Send: client %d\n", cnt++);
     rtn = write(srchRec->socketFd, buf, len);
     if (rtn < 0) 
     {

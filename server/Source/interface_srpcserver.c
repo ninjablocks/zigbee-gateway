@@ -85,7 +85,9 @@ static uint8_t SRPC_notSupported(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_sblDownloadImage(uint8_t *pBuf, uint32 clientFd);
 static uint8_t SRPC_sblAbort(uint8_t *pBuf, uint32 clientFd);
 static uint8_t SRPC_changeDeviceName(uint8_t *pBuf, uint32 clientFd);
-static uint8_t SRPC_removeDevice(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_installCertificate(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_getLastMessage(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_getCurrentPrice(uint8_t *pBuf, uint32_t clientFd);
 
 //SRPC Interface call back functions
 static void SRPC_CallBack_addGroupRsp(uint16_t groupId, char *nameStr, uint32 clientFd);
@@ -117,7 +119,7 @@ const rpcsProcessMsg_t rpcsProcessIncoming[] =
   SRPC_getDeviceState,  //SRPC_GET_DEV_STATE     
   SRPC_getDeviceLevel,  //SRPC_GET_DEV_LEVEL     
   SRPC_getDeviceHue,    //SRPC_GET_DEV_HUE  
-  SRPC_getDeviceSat,    //SRPC_GET_DEV_SAT        
+  SRPC_getDeviceSat,    //SRPC_GET_DEV_HUE        
   SRPC_bindDevices,     //SRPC_BIND_DEVICES      
   SRPC_getDeviceTemp,   //SRPC_GET_THERM_READING 
   SRPC_getDevicePower,  //SRPC_GET_POWER_READING 
@@ -126,7 +128,7 @@ const rpcsProcessMsg_t rpcsProcessIncoming[] =
   SRPC_getGroups,       //SRPC_GET_GROUPS    
   SRPC_addGroup,        //SRPC_ADD_GROUP     
   SRPC_getScenes,       //SRPC_GET_SCENES    
-  SRPC_storeScene,      //SRPC_STORE_SCENE       
+  SRPC_storeScene,       //SRPC_STORE_SCENE       
   SRPC_recallScene,     //SRPC_RECALL_SCENE      
   SRPC_identifyDevice,  //SRPC_IDENTIFY_DEVICE   
   SRPC_changeDeviceName,//RPCS_CHANGE_DEVICE_NAME  
@@ -134,11 +136,17 @@ const rpcsProcessMsg_t rpcsProcessIncoming[] =
   SRPC_getDeviceHumid,  //SRPC_GET_HUMID_READING            
   SRPC_sblDownloadImage, //SRPC_SBL_DOWNLOAD_IMAGE
   SRPC_sblAbort, //SRPC_SBL_ABORT
+  SRPC_installCertificate,  //SRPC_INSTALL_CERTIFICATE
+  SRPC_getLastMessage,  //SRPC_GET_LAST_MESSAGE
+  SRPC_getCurrentPrice, //SRPC_GET_CURRENT_PRICE
 };
 
 //global variables
 
 uint32 bootloader_initiator_clientFd;
+uint32 cert_install_clientFd = 0;
+uint32 get_last_message_clientFd = 0;
+uint32 get_current_price_clientFd = 0;
 uint16_t SocketBootloadingState = SOCKET_BOOTLOADING_STATE_IDLE;
 
 
@@ -156,7 +164,7 @@ static uint8_t* srpcParseEpInfo(epInfo_t* epInfo)
   uint8_t *pSrpcMessage, *pTmp, devNameLen = 1, pSrpcMessageLen;  
 
   //printf("srpcParseEpInfo++\n");   
-   
+      
   //RpcMessage contains function ID param Data Len and param data
   if( epInfo->deviceName )
   {
@@ -165,7 +173,7 @@ static uint8_t* srpcParseEpInfo(epInfo_t* epInfo)
   
   //sizre of EP infor - the name char* + num bytes of device name (byte 0 being len on name str)
   pSrpcMessageLen = sizeof(epInfo_t) - sizeof(char*) + devNameLen;
-  pSrpcMessage = malloc(pSrpcMessageLen + 2);
+  pSrpcMessage = malloc(pSrpcMessageLen + 2);  
   
   pTmp = pSrpcMessage;
   
@@ -186,7 +194,7 @@ static uint8_t* srpcParseEpInfo(epInfo_t* epInfo)
     *pTmp++ = epInfo->version;  
     
     if( epInfo->deviceName )
-    {    
+    {
       for(i = 0; i < (epInfo->deviceName[0] + 1); i++)
       {
         *pTmp++ = epInfo->deviceName[i];
@@ -322,6 +330,8 @@ void SRPC_CallBack_SendProgressReport(uint8_t phase, uint32_t location, uint32 c
   //Send SRPC
   srpcSend(pSrpcMessage, clientFd);  
 
+  free(pSrpcMessage);
+  
   return;              
 }
 
@@ -691,6 +701,8 @@ static uint8_t SRPC_changeDeviceName(uint8_t *pBuf, uint32 clientFd)
         
   devListChangeDeviceName(devNwkAddr, devEndpoint, nameStr);
 
+  free(nameStr);
+  
   return 0;
 }
 
@@ -1170,9 +1182,127 @@ static uint8_t SRPC_getDevicePower(uint8_t *pBuf, uint32_t clientFd)
   printf("SRPC_getDevicePower: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
     
   // Get light sat
-  zbSocGetPower(dstAddr, endpoint, addrMode);
+  zbSocReadPower(dstAddr, endpoint, addrMode);
 
   printf("SRPC_getDevicePower--\n");
+  
+  return 0;
+}
+
+/*********************************************************************
+ * @fn          SRPC_installCertificate
+ *
+ * @brief       This function installs the certificate on the IHD.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_installCertificate(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint16_t filenameLength;
+  uint8_t status;
+  uint8_t force2reset;
+  char * filename;
+
+  pBuf+=2; //increment past SRPC header
+  filenameLength = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf+=2;
+  force2reset = *pBuf++;
+  //todo: verify that the actual received packet is long enough to contain the filename of the length reported.
+  filename = (char *)pBuf;
+  filename[filenameLength] = '\0'; //todo: make sure pBuf is long enough to contain this extra character
+  
+//  printf("SRPC_installCertificate: filename = %s, force2reset = %d\n", filename, force2reset); 
+    
+  cert_install_clientFd = clientFd;
+//  printf("SRPC_installCertificate: cert_install_clientFd = %d\n", cert_install_clientFd);
+
+  if ((status = zbSocInitiateCertInstall(filename, force2reset)) != SUCCESS)
+  {
+    SRPC_CallBack_certInstallResultInd(status);
+    cert_install_clientFd = 0;
+  }
+
+//  printf("SRPC_installCertificate--\n");
+  
+  return 0;
+}
+
+/*********************************************************************
+ * @fn          SRPC_getLastMessage
+ *
+ * @brief       This function sends GetLastMessage to the ESI.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_getLastMessage(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t endpoint, addrMode;
+  uint16_t dstAddr;
+ 
+//  printf("SRPC_getLastMessage++\n");
+       
+  //increment past SRPC header
+  pBuf+=2;
+
+  addrMode = (afAddrMode_t)*pBuf++;   
+  dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf += Z_EXTADDR_LEN;
+  endpoint = *pBuf++;
+  // index past panId
+  pBuf += 2;
+  
+//  printf("SRPC_getLastMessage: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+    
+  // Get light sat
+  zbSocGetLastMessage(dstAddr, endpoint, addrMode);
+
+  get_last_message_clientFd = clientFd;
+    
+  printf("Requested the ZigBee SoC to send GetLastMessage.\n");
+  
+  return 0;
+}
+
+/*********************************************************************
+ * @fn          SRPC_getCurrentPrice
+ *
+ * @brief       This function sends GetCurrentPrice to the ESI.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_getCurrentPrice(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t endpoint, addrMode, rxOnIdle;
+  uint16_t dstAddr;
+ 
+//  printf("SRPC_getCurrentPrice++\n");
+       
+  //increment past SRPC header
+  pBuf+=2;
+
+  addrMode = (afAddrMode_t)*pBuf++;   
+  dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf += Z_EXTADDR_LEN;
+  endpoint = *pBuf++;
+  // index past panId
+  pBuf += 2;
+
+  rxOnIdle = 1; // The server should know what the devide type of the IHD is. If a router, rxOnIdle can be 1, otherwise 0.
+  
+//  printf("SRPC_getCurrentPrice: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+    
+  // Get light sat
+  zbSocGetCurrentPrice(rxOnIdle, dstAddr, endpoint, addrMode);
+
+  get_current_price_clientFd = clientFd;
+    
+  printf("Requested the ZigBee SoC to send GetCurrentPrice.\n");
   
   return 0;
 }
@@ -1304,6 +1434,8 @@ void SRPC_CallBack_addGroupRsp(uint16_t groupId, char *nameStr, uint32 clientFd)
   //Send SRPC
   srpcSend(pSrpcMessage, clientFd);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_addGroupRsp--\n");
                     
   return;              
@@ -1407,6 +1539,8 @@ void SRPC_CallBack_addSceneRsp(uint16_t groupId, uint8_t sceneId, char *nameStr,
   //Send SRPC
   srpcSend(pSrpcMessage, clientFd);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_addSceneRsp--\n");
                     
   return;              
@@ -1446,6 +1580,8 @@ void SRPC_CallBack_getStateRsp(uint8_t state, uint16_t srcAddr, uint8_t endpoint
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_addSceneRsp--\n");
                     
   return;              
@@ -1485,6 +1621,8 @@ void SRPC_CallBack_getLevelRsp(uint8_t level, uint16_t srcAddr, uint8_t endpoint
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_getLevelRsp--\n");
                     
   return;              
@@ -1524,6 +1662,8 @@ void SRPC_CallBack_getHueRsp(uint8_t hue, uint16_t srcAddr, uint8_t endpoint, ui
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_getHueRsp--\n");
                     
   return;              
@@ -1563,6 +1703,8 @@ void SRPC_CallBack_getSatRsp(uint8_t sat, uint16_t srcAddr, uint8_t endpoint, ui
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_getSatRsp--\n");
                     
   return;              
@@ -1603,6 +1745,8 @@ void SRPC_CallBack_getTempRsp(uint16_t temp, uint16_t srcAddr, uint8_t endpoint,
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_getSatRsp--\n");
                     
   return;              
@@ -1643,6 +1787,8 @@ void SRPC_CallBack_getHumidRsp(uint16_t humid, uint16_t srcAddr, uint8_t endpoin
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_getHumidRsp--\n");
                     
   return;              
@@ -1655,7 +1801,7 @@ void SRPC_CallBack_getHumidRsp(uint16_t humid, uint16_t srcAddr, uint8_t endpoin
   *
  * @return  Status
  ***************************************************************************************************/
-void SRPC_CallBack_getPowerRsp(uint32_t power, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
+void SRPC_CallBack_readPowerRsp(uint32_t power, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
 {
   uint8_t *pSrpcMessage, *pBuf;  
     
@@ -1668,7 +1814,7 @@ void SRPC_CallBack_getPowerRsp(uint32_t power, uint16_t srcAddr, uint8_t endpoin
   pBuf = pSrpcMessage;
   
   //Set func ID in RPCS buffer
-  *pBuf++ = SRPC_POWER_READING;
+  *pBuf++ = SRPC_READ_POWER_RSP;
   //param size
   *pBuf++ = 7;
   
@@ -1686,6 +1832,8 @@ void SRPC_CallBack_getPowerRsp(uint32_t power, uint16_t srcAddr, uint8_t endpoin
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_getPowerRsp--\n");
                     
   return;              
@@ -1740,6 +1888,8 @@ void SRPC_CallBack_zoneSateInd(uint32_t zoneState, uint16_t srcAddr, uint8_t end
   //Store the device that sent the request, for now send to all clients
   srpcSendAll(pSrpcMessage);  
 
+  free(pSrpcMessage);
+  
   //printf("SRPC_CallBack_zoneSateInd--\n");
                     
   return;              
@@ -1798,6 +1948,148 @@ static uint8_t SRPC_getDevices(uint8_t *pBuf, uint32_t clientFd)
 static uint8_t SRPC_notSupported(uint8_t *pBuf, uint32_t clientFd)
 {   
   return 0;  
+}
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_certInstallResultInd
+ *
+ * @brief   Sends Certificate Installation Result indication to the client
+ *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_certInstallResultInd(uint8_t result)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+//  printf("SRPC_CallBack_certInstallResultInd: result = %d\n", result);
+  
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + 1);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_CERT_INSTALL_RESULT_IND;
+  //param size
+  *pBuf++ = 1;
+  
+  *pBuf = result;
+        
+  srpcSend(pSrpcMessage, cert_install_clientFd);
+
+  free(pSrpcMessage);
+}
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_keyEstablishmentStateInd
+ *
+ * @brief   Sends Key Establishment State indication to the client
+ *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_keyEstablishmentStateInd(uint8_t state)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+  printf("SRPC_CallBack_keyEstablishmentStateInd: state = %d\n", state);
+  
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + 1);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_KEY_ESTABLISHMENT_STATE_IND;
+  //param size
+  *pBuf++ = 1;
+  
+  *pBuf = state;
+        
+  srpcSendAll(pSrpcMessage);  
+
+  free(pSrpcMessage);
+}
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_displayMessageInd
+ *
+ * @brief   Sends DisplayMessage indication to the client that sent GetLastMessage
+ *          This can be sent unsolicitedly as well
+ *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_displayMessageInd(uint8_t *zclPayload, uint8_t len)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+//  printf("SRPC_CallBack_displayMessageInd: len = %d\n", len);
+  
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + len);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_DISPLAY_MESSAGE_IND;
+  //param size
+  *pBuf++ = len;
+  
+  memcpy(pBuf, zclPayload, len);
+        
+  if (get_last_message_clientFd != 0)
+  {
+    srpcSend(pSrpcMessage, get_last_message_clientFd);
+    get_last_message_clientFd = 0;
+  }
+  else
+  {
+    srpcSendAll(pSrpcMessage);
+  }
+
+  free(pSrpcMessage);
+
+  printf("Sent SRPC_DISPLAY_MESSAGE_IND to the client.\n\n");
+}
+
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_publishPriceInd
+ *
+ * @brief   Sends PublishPrice indication to the client that sent GetCurrentPrice
+ *          This can be sent unsolicitedly as well
+ *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_publishPriceInd(uint8_t *zclPayload, uint8_t len)
+{
+  uint8_t *pSrpcMessage, *pBuf;  
+    
+//  printf("SRPC_CallBack_publishPriceInd: len = %d\n", len);
+  
+  //RpcMessage contains function ID param Data Len and param data
+  pSrpcMessage = malloc(2 + len);
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_PUBLISH_PRICE_IND;
+  //param size
+  *pBuf++ = len;
+  
+  memcpy(pBuf, zclPayload, len);
+        
+  if (get_current_price_clientFd != 0)
+  {
+    srpcSend(pSrpcMessage, get_current_price_clientFd);
+    get_current_price_clientFd = 0;
+  }
+  else
+  {
+    srpcSendAll(pSrpcMessage);
+  }
+  
+  free(pSrpcMessage);
+
+  printf("Sent SRPC_PUBLISH_PRICE_IND to the client.\n\n");
 }
 
 /***************************************************************************************************

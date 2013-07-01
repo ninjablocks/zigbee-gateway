@@ -110,9 +110,9 @@ int sClientFd;
 // Client data transmission buffers
 char socketBuf[2][TX_BUF_SIZE];
 // Client data received buffer
-linkedMsg *rxBuf;
+linkedMsg *rxBuf = NULL;
 // Client data processing buffer
-linkedMsg *rxProcBuf;
+linkedMsg *rxProcBuf = NULL;
 
 // Message count to keep track of incoming and processed messages
 static int messageCount = 0;
@@ -399,6 +399,8 @@ static void *handleThreadFunc (void *ptr)
 		debug_printf("[DBG] Finished processing (processed %d messages)...\n",
 				messageCount);
 
+    rxProcBuf = NULL;
+
 	} while (!done);
 
 	return ptr;
@@ -531,7 +533,7 @@ static void *rxThreadFunc (void *ptr)
 		}
 
 		// Handle thread must make sure it has finished its list. See if there are new messages to move over
-		if (rxBuf != NULL)
+		if ((rxBuf != NULL) && (rxProcBuf == NULL))
 		{
 		    pthread_mutex_lock(&clientRxMutex);
 		    

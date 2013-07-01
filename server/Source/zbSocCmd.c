@@ -47,6 +47,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <ctype.h>
 
 #include <errno.h>
 #include <string.h>
@@ -54,6 +55,7 @@
 #include <time.h>
 
 #include "zbSocCmd.h"
+
 
 /*********************************************************************
  * MACROS
@@ -103,20 +105,24 @@ len,   /*RPC payload Len                                      */     \
 			
 #define TIMEOUT_TIMER (&timers[0])
 #define REPORTING_TIMER (&timers[1])
-			      
+          
 /*********************************************************************
  * CONSTANTS
  */
-#define MT_APP_RPC_CMD_TOUCHLINK          0x01
-#define MT_APP_RPC_CMD_RESET_TO_FN        0x02
-#define MT_APP_RPC_CMD_CH_CHANNEL         0x03
-#define MT_APP_RPC_CMD_JOIN_HA            0x04
-#define MT_APP_RPC_CMD_PERMIT_JOIN        0x05
-#define MT_APP_RPC_CMD_SEND_RESET_TO_FN   0x06
+#define MT_SYS_OSAL_NV_WRITE                 0x09
+
+#define MT_APP_RPC_CMD_TOUCHLINK             0x01
+#define MT_APP_RPC_CMD_RESET_TO_FN           0x02
+#define MT_APP_RPC_CMD_CH_CHANNEL            0x03
+#define MT_APP_RPC_CMD_JOIN_HA               0x04
+#define MT_APP_RPC_CMD_PERMIT_JOIN           0x05
+#define MT_APP_RPC_CMD_SEND_RESET_TO_FN      0x06
+#define MT_APP_RPC_CMD_INSTALL_CERTIFICATE   0x07
 
 #define MT_APP_RSP                           0x80
 #define MT_APP_ZLL_TL_IND                    0x81
-#define MT_APP_NEW_DEV_IND               0x82
+#define MT_APP_NEW_DEV_IND                   0x82
+#define MT_APP_KEY_ESTABLISHMENT_STATE_IND   0x90
 
 #define MT_DEBUG_MSG                         0x80
 
@@ -132,18 +138,23 @@ len,   /*RPC payload Len                                      */     \
 #define ZCL_CMD_WRITE_RSP                               0x04
 
 // General Clusters
-#define ZCL_CLUSTER_ID_GEN_IDENTIFY                    0x0003
-#define ZCL_CLUSTER_ID_GEN_GROUPS                      0x0004
-#define ZCL_CLUSTER_ID_GEN_SCENES                      0x0005
-#define ZCL_CLUSTER_ID_GEN_ON_OFF                      0x0006
-#define ZCL_CLUSTER_ID_GEN_LEVEL_CONTROL               0x0008
+#define ZCL_CLUSTER_ID_GEN_IDENTIFY                          0x0003
+#define ZCL_CLUSTER_ID_GEN_GROUPS                            0x0004
+#define ZCL_CLUSTER_ID_GEN_SCENES                            0x0005
+#define ZCL_CLUSTER_ID_GEN_ON_OFF                            0x0006
+#define ZCL_CLUSTER_ID_GEN_LEVEL_CONTROL                     0x0008
+#define ZCL_CLUSTER_ID_GEN_KEY_ESTABLISHMENT                 0x0800
 // Lighting Clusters
-#define ZCL_CLUSTER_ID_LIGHTING_COLOR_CONTROL          0x0300
+#define ZCL_CLUSTER_ID_LIGHTING_COLOR_CONTROL                0x0300
 // Mettering and Sensing Clusters
 #define ZCL_CLUSTER_ID_MS_TEMPERATURE_MEASUREMENT			 0x0402
 #define ZCL_CLUSTER_ID_MS_REL_HUMIDITY_MEASUREMENT		 0x0405
-//Metering
-#define ZCL_CLUSTER_ID_SE_SIMPLE_METERING              0x0702
+// Pricing
+#define ZCL_CLUSTER_ID_SE_PRICING                            0x0700
+// Metering
+#define ZCL_CLUSTER_ID_SE_SIMPLE_METERING                    0x0702
+// Messaging
+#define ZCL_CLUSTER_ID_SE_MESSAGE                            0x0703
 // Security and Safety (SS) Clusters
 #define ZCL_CLUSTER_ID_SS_IAS_ZONE                     0x0500
 
@@ -177,6 +188,7 @@ len,   /*RPC payload Len                                      */     \
 /*** SE SIMPLE METERING Cluster ATTR's  ***/
 /*******************************/
 #define ATTRID_MASK_SE_HISTORICAL_CONSUMPTION             0x0400
+#define ATTRID_SE_INSTANTANEOUS_DEMAND               ( 0x0000 | ATTRID_MASK_SE_HISTORICAL_CONSUMPTION )
 
 /*******************************/
 /*** Scenes Cluster Commands ***/
@@ -200,6 +212,18 @@ len,   /*RPC payload Len                                      */     \
 #define SS_IAS_ZONE_STATUS_ENROLL_RESPONSE_CODE_NOT_SUPPORTED            0x01
 #define SS_IAS_ZONE_STATUS_ENROLL_RESPONSE_CODE_NO_ENROLL_PERMIT         0x02
 #define SS_IAS_ZONE_STATUS_ENROLL_RESPONSE_CODE_TOO_MANY_ZONES           0x03
+
+/**********************************/
+/*** Messaging Cluster Commands ***/
+/**********************************/
+#define COMMAND_SE_GET_LAST_MESSAGE                   0x0000  // Messaging client command
+#define COMMAND_SE_DISPLAY_MESSAGE                    0x0000  // Messaging server command
+
+/********************************/
+/*** Pricing Cluster Commands ***/
+/********************************/
+#define COMMAND_SE_GET_CURRENT_PRICE                  0x0000  // Pricing client command
+#define COMMAND_SE_PUBLISH_PRICE                      0x0000  // Pricing server command
 
 
 /* The 3 MSB's of the 1st command field byte are for command type. */
@@ -250,11 +274,28 @@ len,   /*RPC payload Len                                      */     \
 
 #define ZBSOC_SBL_MAX_FRAME_SIZE			71
 
+#define ZBSOC_CERT_STATE_IMPLICIT_CERT   0
+#define ZBSOC_CERT_STATE_DEV_PRIVATE_KEY 1
+#define ZBSOC_CERT_STATE_CA_PUBLIC_KEY   2
+#define ZBSOC_CERT_STATE_IEEE_ADDRESS    3
+#define ZBSOC_CERT_STATE_ERASE_NWK_INFO  4
+#define ZBSOC_CERT_STATE_COMPLETE        5
+#define ZBSOC_CERT_STATE_IDLE            6
+
 #define MT_NLME_LEAVE_REQ         0x05
 
 #define Z_EXTADDR_LEN    8
 
-#define Z_EXTADDR_LEN 8
+#define ZCL_KE_IMPLICIT_CERTIFICATE_LEN                  48
+#define ZCL_KE_DEVICE_PRIVATE_KEY_LEN                    21
+#define ZCL_KE_CA_PUBLIC_KEY_LEN                         22
+
+#define MAX_CERT_LINE_LEN 256
+
+#define ZBSOC_CERT_OPER_START       0
+#define ZBSOC_CERT_OPER_CONT        1
+#define ZBSOC_CERT_OPER_ERROR       2
+#define ZBSOC_CERT_OPER_STOP        3
 
 typedef enum
 {
@@ -321,6 +362,13 @@ const char * BOOTLOADER_RESULT_STRINGS[] =
  * TYPEDEFS
  */
 
+typedef struct {
+  uint8_t ieeeAddr[Z_EXTADDR_LEN];
+  uint8_t implicitCert[ZCL_KE_IMPLICIT_CERTIFICATE_LEN];
+  uint8_t caPublicKey[ZCL_KE_CA_PUBLIC_KEY_LEN];
+  uint8_t devPrivateKey[ZCL_KE_DEVICE_PRIVATE_KEY_LEN];
+} certInfo_t;
+
 /*********************************************************************
  * GLOBAL VARIABLES
  */
@@ -335,10 +383,12 @@ zbSocCallbacks_t zbSocCb;
 uint32_t zbSocSblProgressReportingInterval;
 uint8_t zbSocSblReportingPending = FALSE;
 FILE * zbSocSblImageFile;
-
+certInfo_t zbSocCertInfo;
+uint8_t zbSocCertForce2Reset;
 	
 int timeout_retries;
 uint16_t zbSocSblState = ZBSOC_SBL_STATE_IDLE;
+uint16_t zbSocCertState = ZBSOC_CERT_STATE_IDLE;
 
 zllTimer timers[2] = {
 	{NULL, 0, FALSE},
@@ -360,6 +410,7 @@ static void processRpcSysAppNewDevInd(uint8_t *TlIndBuff);
 static void processRpcSysAppZcl(uint8_t *zclRspBuff);
 static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameLen, uint16_t clusterID, uint16_t nwkAddr, uint8_t endpoint);
 static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen, uint16_t clusterID, uint16_t nwkAddr, uint8_t endpoint);
+static void processRpcSysSys(uint8_t *rpcBuff);
 static void processRpcSysApp(uint8_t *rpcBuff);
 static void processRpcSysDbg(uint8_t *rpcBuff);
 void zbSocSblEnableBootloader();
@@ -368,6 +419,7 @@ void zbSocTimerDelete(zllTimer * timer);
 void zbSocTimeoutCallback(void);
 void zbSocSblReportingCallback(void);
 static void processRpcSysSbl(uint8_t *rpcBuff);
+static void processCertInstall(uint8_t operation);
 void zbSocSblExecuteImage(void);
 
 
@@ -386,13 +438,57 @@ static void calcFcs(uint8_t *msg, int size)
 	uint8_t result = 0;
 	int idx = 1; //skip SOF
 	int len = (size - 2);  // skip FCS
-
 	
 	while ((len--) != 0) {
 		result ^= msg[idx++];
 	}
 	
 	msg[(size-1)] = result;
+}
+
+/*********************************************************************
+ * @fn      hexStr2Array
+ *
+ * @brief   converts hexadecimal char string to byte array.
+ *
+ * @param   str - input string
+ *          len - size of array
+ *          array - output byte array
+ *
+ * @return  none
+ */
+static uint8_t hexStr2Array(char *str, int len, uint8_t *array)
+{
+  int i, j;
+  uint8_t tempNibble;
+
+  if (strlen(str) > len * 2)
+  {
+    return CERT_RESULT_WRONG_FORMAT;
+  }
+
+  for (i = 0; i < strlen(str); i += 2)
+  {
+    array[i / 2] = 0;
+
+    for (j = 0; j < 2; j++)
+    {
+      if (!isxdigit(str[i + j]))
+      {
+        return CERT_RESULT_WRONG_FORMAT;
+      }
+
+      tempNibble = (uint8_t) toupper(str[i + j]) - '0';
+      if (tempNibble > 9)
+      {
+        tempNibble -= ('A' - ('9' + 1));
+      }
+
+      array[i / 2] = array[i / 2] * 16 + tempNibble;
+    }
+  }
+
+  return SUCCESS;
 }
 
 /*********************************************************************
@@ -473,7 +569,7 @@ void zbSocForceRun(void)
 	tcflush(serialPortFd, TCOFLUSH);  
 	
 }
-	
+
 void zbSocClose( void )
 {
   tcflush(serialPortFd, TCOFLUSH);
@@ -527,7 +623,6 @@ void zbSocTouchLink(void)
     tcflush(serialPortFd, TCOFLUSH);   
 }
 
-
 /*********************************************************************
  * @fn      zbSocResetToFn
  *
@@ -559,7 +654,7 @@ void zbSocResetToFn(void)
 /*********************************************************************
  * @fn      zbSocSendResetToFn
  *
- * @brief   Send the reset to factory new command to a ZLL device.
+ * @brief   Send the reset to factory new command to a ZigBee device.
  *
  * @param   none
  *
@@ -626,31 +721,224 @@ void zbSocOpenNwk(void)
  */
 void zbSocSetState(uint8_t state, uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 {
-  	uint8_t cmd[] = {
-  		0xFE,                                                                                      
-  		11,   /*RPC payload Len */          
-  		0x29, /*MT_RPC_CMD_AREQ + MT_RPC_SYS_APP */          
-  		0x00, /*MT_APP_MSG  */          
-  		0x0B, /*Application Endpoint */          
-  		(dstAddr & 0x00ff),
-  		(dstAddr & 0xff00) >> 8,
-  		endpoint, /*Dst EP */          
-  		(ZCL_CLUSTER_ID_GEN_ON_OFF & 0x00ff),
-  		(ZCL_CLUSTER_ID_GEN_ON_OFF & 0xff00) >> 8,
-  		0x04, //Data Len
-  		addrMode, 
-  		0x01, //0x01 ZCL frame control field.  (send to the light cluster only)
-  		transSeqNumber++,
-		(state ? 1:0),
-  		0x00       //FCS - fill in later
-  	};
-
-  	calcFcs(cmd, sizeof(cmd));
-  	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+	uint8_t cmd[] = {
+    0xFE,                                                                                      
+    11,   /*RPC payload Len */          
+    0x29, /*MT_RPC_CMD_AREQ + MT_RPC_SYS_APP */          
+    0x00, /*MT_APP_MSG  */          
+    0x0B, /*Application Endpoint */          
+    (dstAddr & 0x00ff),
+    (dstAddr & 0xff00) >> 8,
+    endpoint, /*Dst EP */          
+    (ZCL_CLUSTER_ID_GEN_ON_OFF & 0x00ff),
+    (ZCL_CLUSTER_ID_GEN_ON_OFF & 0xff00) >> 8,
+    0x04, //Data Len
+    addrMode, 
+    0x01, //0x01 ZCL frame control field.  (send to the light cluster only)
+    transSeqNumber++,
+    (state ? 1:0),
+    0x00       //FCS - fill in later
+  };
+      
+	calcFcs(cmd, sizeof(cmd));
+	
+  socWrite(serialPortFd,cmd,sizeof(cmd));
+  tcflush(serialPortFd, TCOFLUSH);
 }
 
+/*********************************************************************
+ * @fn      zbSocNVWrite
+ *
+ * @brief   Send data for an NV item to the ZigBee SoC.
+ *
+ * @param   id - NV item id
+ * @param   offset - Offset in the item to write at
+ * @param   len - length of the data in byte
+ * @param   data - data to write
+ *
+ * @return  none
+ */
+void zbSocNVWrite(uint16_t id, uint8_t offset, uint8_t len, uint8_t *data)
+{
+  uint8_t *cmd;
+
+//  printf("zbSocNVWrite: id = %d, offset = %d, len = %d\n", id, offset, len);
+
+  cmd = malloc(len + 9);
+
+  cmd[0] = 0xFE;
+  cmd[1] = len + 4;
+  cmd[2] = MT_RPC_CMD_SREQ | MT_RPC_SYS_SYS;
+  cmd[3] = MT_SYS_OSAL_NV_WRITE;
+  cmd[4] = (id & 0x00ff); // LSB of id
+  cmd[5] = (id & 0xff00) >> 8;  // MSG of id
+  cmd[6] = offset;
+  cmd[7] = len;
+  memcpy(&cmd[8], data, len);
+  cmd[8 + len] = 0x00; // FCS - fill in later
+      
+	calcFcs(cmd, len + 9);
+	
+  socWrite(serialPortFd, cmd, len + 9);
+  free(cmd);
+  tcflush(serialPortFd, TCOFLUSH);
+}
+
+/*********************************************************************
+ * @fn      zbSocInstallCertificate
+ *
+ * @brief   Parse a certificate file and send data to the IPD SoC.
+ *
+ * @param   filename: name of the certificate file
+ *
+ * @return  none
+ */
+uint8_t zbSocInitiateCertInstall(char *filename, uint8_t force2reset)
+
+{
+  FILE *certFile;
+  char csLine[MAX_CERT_LINE_LEN];
+  char csLabel[MAX_CERT_LINE_LEN];
+  char csValue[MAX_CERT_LINE_LEN];
+  uint8_t status;
+
+	certFile = fopen(filename, "r");
+	if (certFile == NULL)
+	{
+    printf("Could not open file: %s\n", filename);
+		return CERT_RESULT_ERROR_OPENING_FILE;
+	}
+
+  status = SUCCESS;
+
+  memset(&zbSocCertInfo, 0, sizeof(zbSocCertInfo));
+  
+  while (fgets(csLine, MAX_CERT_LINE_LEN, certFile) != NULL)
+  {
+    int pos;
+    int i, j;
+
+//    printf("zbSocInitiateCertInstall: current line = %s\n", csLine);
+    // Skip empty lines and lines starting with space
+    if ((strlen(csLine) > 0) && (csLine[0] != ' '))
+    {
+//      printf("zbSocInitiateCertInstall: strlen(csLine) = %d\n", strlen(csLine));
+      for (pos = 0; (pos < strlen(csLine)) && (csLine[pos] != ':'); pos++) {}
+      if (pos >= strlen(csLine))
+      {
+//        status = CERT_RESULT_WRONG_FORMAT;
+//        break;
+          continue;
+      }
+      
+      // CString.Left()
+      memcpy(csLabel, csLine, pos);
+      csLabel[pos] = 0;
+//      printf("zbSocInitiateCertInstall: csLabel = %s\n", csLabel);
+
+      // CString.TrimLeft()
+      for (i = 0; (i < strlen(csLabel)) && (!isalpha(csLabel[i])); i++) {}
+      for (j = i; j < strlen(csLabel); j++)
+      {
+        csLabel[j - i] = csLabel[j];
+      }
+      csLabel[strlen(csLabel) - i] = 0;
+
+      // CString.TrimRight()
+      for (i = strlen(csLabel) - 1; (i >= 0) && (!isalpha(csLabel[i])); i--) {}
+      csLabel[i + 1] = 0;
+
+      // CString.Mid()
+      strcpy(csValue, &csLine[pos + 1]);
+//      printf("zbSocInitiateCertInstall: csValue = %s\n", csValue);
+
+      // CString.TrimLeft()
+      for (i = 0; (i < strlen(csValue)) && (!isxdigit(csValue[i])); i++) {}
+      for (j = i; j < strlen(csValue); j++)
+      {
+        csValue[j - i] = csValue[j];
+      }
+      csValue[strlen(csValue) - i] = 0;
+
+      // CString.TrimRight()
+      for (i = strlen(csValue) - 1; (i >= 0) && (!isxdigit(csValue[i])); i--) {}
+      csValue[i + 1] = 0;
+
+//      printf("zbSocInitiateCertInstall: %s = %s\n", csLabel, csValue);
+
+      if (!strcmp(csLabel, "IEEE Address"))
+      {
+        uint8_t temp;
+
+        if ((status = hexStr2Array(csValue, Z_EXTADDR_LEN, zbSocCertInfo.ieeeAddr)) != SUCCESS)
+        {
+          break;
+        }
+
+        for (i = 0; i < Z_EXTADDR_LEN / 2; i++)
+        {
+          temp = zbSocCertInfo.ieeeAddr[i];
+          zbSocCertInfo.ieeeAddr[i] = zbSocCertInfo.ieeeAddr[Z_EXTADDR_LEN - i - 1];
+          zbSocCertInfo.ieeeAddr[Z_EXTADDR_LEN - i - 1] = temp;
+        }
+      }
+
+      if (!strcmp(csLabel, "Device Implicit Cert"))
+      {
+        if ((status = hexStr2Array(csValue, ZCL_KE_IMPLICIT_CERTIFICATE_LEN, zbSocCertInfo.implicitCert)) != SUCCESS)
+        {
+          break;
+        }
+      }
+     
+      if (!strcmp(csLabel, "CA Pub Key"))
+      {
+        if ((status = hexStr2Array(csValue, ZCL_KE_CA_PUBLIC_KEY_LEN, zbSocCertInfo.caPublicKey)) != SUCCESS)
+        {
+          break;
+        }
+      }
+
+      if (!strcmp(csLabel, "Device Private Key"))
+      {
+        if ((status = hexStr2Array(csValue, ZCL_KE_DEVICE_PRIVATE_KEY_LEN, zbSocCertInfo.devPrivateKey)) != SUCCESS)
+        {
+          break;
+        }
+      }
+    } 
+  }
+
+  fclose(certFile);
+
+  if (status == SUCCESS)
+  {
+    int i;
+    
+    for (i = 0; i < sizeof(zbSocCertInfo); i++)
+    {
+      if (*(((uint8_t *) &zbSocCertInfo) + i))
+      {
+        break;
+      }
+    }
+
+    if (i < sizeof(zbSocCertInfo))
+    {
+      printf("zbSocInitiateCertInstall: Successfully retrieved certificate information.\n");
+      zbSocCertForce2Reset = force2reset;
+      zbSocCertState = ZBSOC_CERT_STATE_IEEE_ADDRESS;
+      processCertInstall(ZBSOC_CERT_OPER_START);
+    }
+    else
+    {
+      printf("zbSocInitiateCertInstall: No valid information in the certificate.\n");
+      status = CERT_RESULT_WRONG_FORMAT;
+    }
+  }
+	
+	return status;
+}
 
 /*********************************************************************
  * @fn      zbSocSblInitiateImageDownload
@@ -888,7 +1176,7 @@ void zbSocFinishLoadingImage(void)
 /*********************************************************************
  * @fn      zbSocSetLevel
  *
- * @brief   Send the level command to a ZLL light.
+ * @brief   Send the level command to a ZigBee light.
  *
  * @param   level - 0-128 = 0-100%
  * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be controled.
@@ -930,7 +1218,7 @@ void zbSocSetLevel(uint8_t level, uint16_t time, uint16_t dstAddr, uint8_t endpo
 /*********************************************************************
  * @fn      zbSocSetHue
  *
- * @brief   Send the hue command to a ZLL light.
+ * @brief   Send the hue command to a ZigBee light.
  *
  * @param   hue - 0-128 represent the 360Deg hue color wheel : 0=red, 42=blue, 85=green  
  * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be controled.
@@ -972,7 +1260,7 @@ void zbSocSetHue(uint8_t hue, uint16_t time, uint16_t dstAddr, uint8_t endpoint,
 /*********************************************************************
  * @fn      zbSocSetSat
  *
- * @brief   Send the satuartion command to a ZLL light.
+ * @brief   Send the satuartion command to a ZigBee light.
  *
  * @param   sat - 0-128 : 0=white, 128: fully saturated color  
  * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be controled.
@@ -1376,7 +1664,7 @@ void zbSocBind(uint16_t srcNwkAddr, uint8_t srcEndpoint, uint8_t srcIEEE[8], uin
 /*********************************************************************
  * @fn      zbSocGetState
  *
- * @brief   Send the get state command to a ZLL light.
+ * @brief   Send the get state command to a ZigBee light.
  *
  * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be sent the command.
  * @param   endpoint - endpoint of the Light.
@@ -1416,7 +1704,7 @@ void zbSocGetState(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 /*********************************************************************
  * @fn      zbSocGetLevel
  *
- * @brief   Send the get level command to a ZLL light.
+ * @brief   Send the get level command to a ZigBee light.
  *
  * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be sent the command.
  * @param   endpoint - endpoint of the Light.
@@ -1456,7 +1744,7 @@ void zbSocGetLevel(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 /*********************************************************************
  * @fn      zbSocGetHue
  *
- * @brief   Send the get hue command to a ZLL light.
+ * @brief   Send the get hue command to a ZigBee light.
  *
  * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be sent the command.
  * @param   endpoint - endpoint of the Light.
@@ -1496,7 +1784,7 @@ void zbSocGetHue(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 /*********************************************************************
  * @fn      zbSocGetSat
  *
- * @brief   Send the get saturation command to a ZLL light.
+ * @brief   Send the get saturation command to a ZigBee light.
  *
  * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be sent the command.
  * @param   endpoint - endpoint of the Light.
@@ -1533,17 +1821,17 @@ void zbSocGetSat(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
     tcflush(serialPortFd, TCOFLUSH);
 } 
 /*********************************************************************
- * @fn      zbSocGetPower
+ * @fn      zbSocPowerRead
  *
- * @brief   Send the get saturation command to a ZLL light.
+ * @brief   Send the read command to the ESI with regards to Instantaneous Demand.
  *
- * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be sent the command.
+ * @param   dstAddr - Nwk Addr of the ESI to be sent the command.
  * @param   endpoint - endpoint of the Light.
  * @param   addrMode - Unicast or Group cast.
  *
  * @return  none
  */
-void zbSocGetPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
+void zbSocReadPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 {
   	uint8_t cmd[] = {
   		0xFE,                                                                                      
@@ -1561,8 +1849,8 @@ void zbSocGetPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   		0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
   		transSeqNumber++,
   		ZCL_CMD_READ,
-  		(ATTRID_MASK_SE_HISTORICAL_CONSUMPTION & 0x00ff),
-  		(ATTRID_MASK_SE_HISTORICAL_CONSUMPTION & 0xff00) >> 8,
+  		(ATTRID_SE_INSTANTANEOUS_DEMAND & 0x00ff),
+  		(ATTRID_SE_INSTANTANEOUS_DEMAND & 0xff00) >> 8,
   		0x00       //FCS - fill in later
   	};
       
@@ -1653,6 +1941,74 @@ void zbSocGetHumid(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 }
 
 
+/*********************************************************************
+ * @fn      zbSocGetLastMessage
+ *
+ * @brief   Send the GetLastMessage command to the ESI.
+ *
+ * @return  none
+ */
+void zbSocGetLastMessage(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
+{
+  	uint8_t cmd[] = {
+  		0xFE,                                                                                                                                                                                    
+  		11,   //RPC payload Len
+  		0x29, //MT_RPC_CMD_AREQ + MT_RPC_SYS_APP
+  		0x00, //MT_APP_MSG
+  		0x09, //Application Endpoint
+  		(dstAddr & 0x00ff),
+  		(dstAddr & 0xff00) >> 8,
+  		endpoint, //Dst EP
+  		(ZCL_CLUSTER_ID_SE_MESSAGE & 0x00ff),
+  		(ZCL_CLUSTER_ID_SE_MESSAGE & 0xff00) >> 8,      
+  		0x04, //Data Len
+  		addrMode, 
+  		0x01, //0x01 ZCL frame control field.  (send to the light cluster only)
+  		transSeqNumber++,
+  		COMMAND_SE_GET_LAST_MESSAGE,
+  		0x00       //FCS - fill in later
+  	};    
+    
+    calcFcs(cmd, sizeof(cmd));
+    
+    socWrite(serialPortFd,cmd,sizeof(cmd));
+    tcflush(serialPortFd, TCOFLUSH);
+}
+
+/*********************************************************************
+ * @fn      zbSocGetCurrentPrice
+ *
+ * @brief   Send the GetCurrentPrice command to the ESI.
+ *
+ * @return  none
+ */
+void zbSocGetCurrentPrice(uint8_t rxOnIdle, uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
+{
+  	uint8_t cmd[] = {
+  		0xFE,                                                                                                                                                                                    
+  		12,   //RPC payload Len
+  		0x29, //MT_RPC_CMD_AREQ + MT_RPC_SYS_APP
+  		0x00, //MT_APP_MSG
+  		0x09, //Application Endpoint
+  		(dstAddr & 0x00ff),
+  		(dstAddr & 0xff00) >> 8,
+  		endpoint, //Dst EP
+  		(ZCL_CLUSTER_ID_SE_PRICING & 0x00ff),
+  		(ZCL_CLUSTER_ID_SE_PRICING & 0xff00) >> 8,      
+  		0x05, //Data Len
+  		addrMode, 
+  		0x01, //0x01 ZCL frame control field.  (send to the light cluster only)
+  		transSeqNumber++,
+  		COMMAND_SE_GET_CURRENT_PRICE,
+  		rxOnIdle,
+  		0x00       //FCS - fill in later
+  	};    
+    
+    calcFcs(cmd, sizeof(cmd));
+    
+    socWrite(serialPortFd,cmd,sizeof(cmd));
+    tcflush(serialPortFd, TCOFLUSH);
+}
 
 /*************************************************************************************************
  * @fn      processRpcSysAppTlInd()
@@ -1718,6 +2074,24 @@ static void processRpcSysAppNewDevInd(uint8_t *TlIndBuff)
   if(zbSocCb.pfnNewDevIndicationCb)
   {
     zbSocCb.pfnNewDevIndicationCb(&epInfo);
+  }    
+}
+
+/*************************************************************************************************
+ * @fn      processRpcSysAppKeyEstablishmentStateInd()
+ *
+ * @brief  process the Key Establishment State Ind from the IHD
+ *
+ * @param   none
+ *
+ * @return  length of current Rx Buffer
+ *************************************************************************************************/
+static void processRpcSysAppKeyEstablishmentStateInd(uint8_t *KeIndBuf)
+{
+//  printf("processRpcSysAppKeyEstablishmentStateInd: %x\n", KeIndBuf[0]);
+  if(zbSocCb.pfnKeyEstablishmentStateIndCb)
+  {
+    zbSocCb.pfnKeyEstablishmentStateIndCb(KeIndBuf[0]);
   }    
 }
 
@@ -1856,14 +2230,14 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
         zbSocCb.pfnZclGetHumidCb(humid, nwkAddr, endpoint);
       }    
     }    
-    else if( (clusterID == ZCL_CLUSTER_ID_SE_SIMPLE_METERING) && (attrID == ATTRID_MASK_SE_HISTORICAL_CONSUMPTION) && (dataType == ZCL_DATATYPE_INT24) )
+    else if( (clusterID == ZCL_CLUSTER_ID_SE_SIMPLE_METERING) && (attrID == ATTRID_SE_INSTANTANEOUS_DEMAND) && (dataType == ZCL_DATATYPE_INT24) )
     {
-      if(zbSocCb.pfnZclGetPowerCb)      
+      if(zbSocCb.pfnZclReadPowerRspCb)      
       {
         uint32_t power;  
         power = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], 0);            
         printf("processRpcSysAppZclFoundation: Power:%x, %x:%x:%x:%x\n", power, zclRspBuff[0], zclRspBuff[1], zclRspBuff[3], 0);
-        zbSocCb.pfnZclGetPowerCb(power, nwkAddr, endpoint);
+        zbSocCb.pfnZclReadPowerRspCb(power, nwkAddr, endpoint);
       }    
     }
     else                
@@ -1899,17 +2273,17 @@ static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen,
   commandID = *zclRspBuff++;
   len = zclFrameLen - 3; //len is frame len - 3byte ZCL header
   
-  printf("processRpcSysAppZclCluster: commandID=%x, len=%x\n", commandID, len); 
+//  printf("processRpcSysAppZclCluster: commandID=%x, len=%x\n", commandID, len); 
   
   if( clusterID == ZCL_CLUSTER_ID_SS_IAS_ZONE)
   {
     if(commandID == COMMAND_SS_IAS_ZONE_STATUS_CHANGE_NOTIFICATION)
     {
-      if(zbSocCb.pfnZclZoneSateChangeCb)      
+      if(zbSocCb.pfnZclZoneStateChangeCb)      
       {
         uint32_t zoneState;  
         zoneState = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[3], 0);            
-        zbSocCb.pfnZclZoneSateChangeCb(zoneState, nwkAddr, endpoint);
+        zbSocCb.pfnZclZoneStateChangeCb(zoneState, nwkAddr, endpoint);
       }
     }
     if(commandID == COMMAND_SS_IAS_ZONE_STATUS_ENROLL_REQUEST)
@@ -1917,7 +2291,48 @@ static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen,
       
     }
   }
+  else if (clusterID == ZCL_CLUSTER_ID_SE_MESSAGE)
+  {
+    if (commandID == COMMAND_SE_DISPLAY_MESSAGE)
+    {
+      if (zbSocCb.pfnZclDisplayMessageIndCb)
+      {
+        zbSocCb.pfnZclDisplayMessageIndCb(zclRspBuff, len);
+      }
+    }
+  }
+  else if (clusterID == ZCL_CLUSTER_ID_SE_PRICING)
+  {
+    if (commandID == COMMAND_SE_PUBLISH_PRICE)
+    {
+      if (zbSocCb.pfnZclPublishPriceIndCb)
+      {
+        zbSocCb.pfnZclPublishPriceIndCb(zclRspBuff, len);
+      }
+    }
+  }
 }
+
+/*************************************************************************************************
+ * @fn      processRpcSysSys()
+ *
+ * @brief   read and process the RPC SYS message from the ZigBee SoC
+ *
+ * @param   none
+ *
+ * @return  length of current Rx Buffer
+ *************************************************************************************************/
+static void processRpcSysSys(uint8_t *rpcBuff)
+{
+  if ( rpcBuff[1] == MT_SYS_OSAL_NV_WRITE )
+  {
+//    printf("processRpcSysSys: MT_SYS_OSAL_NV_WRITE response with erro code %d\n", rpcBuff[2]);
+    processCertInstall(rpcBuff[2] ? ZBSOC_CERT_OPER_ERROR : ZBSOC_CERT_OPER_CONT);
+  }
+    
+  return;   
+}
+
 
 /*************************************************************************************************
  * @fn      processRpcSysApp()
@@ -1937,7 +2352,11 @@ static void processRpcSysApp(uint8_t *rpcBuff)
   else if( rpcBuff[1] == MT_APP_NEW_DEV_IND )
   {
     processRpcSysAppNewDevInd(&rpcBuff[2]);
-  }  
+  }
+  else if ( rpcBuff[1] == MT_APP_KEY_ESTABLISHMENT_STATE_IND )
+  {
+    processRpcSysAppKeyEstablishmentStateInd(&rpcBuff[2]);
+  }
   else if( rpcBuff[1] == MT_APP_RSP )
   {
     processRpcSysAppZcl(&rpcBuff[2]);
@@ -2197,6 +2616,79 @@ static void processRpcSysSbl(uint8_t *rpcBuff)
 
 
 /*************************************************************************************************
+ * @fn      processCertInstall()
+ *
+ * @brief   
+ *
+ * @param
+ *
+ * @return 
+ *************************************************************************************************/
+static void processCertInstall(uint8_t operation)
+{
+//  printf("processCertInstall: operation = %d\n", operation);
+
+  if (operation == ZBSOC_CERT_OPER_START)
+  {
+    zbSocCertState = ZBSOC_CERT_STATE_IMPLICIT_CERT;
+  }
+
+//  printf("processCertInstall: zbSocCertState = %d\n", zbSocCertState);
+
+  if (zbSocCertState < ZBSOC_CERT_STATE_IDLE)
+  {
+    if (operation == ZBSOC_CERT_OPER_STOP || operation == ZBSOC_CERT_OPER_ERROR)
+    {
+      zbSocCertState = ZBSOC_CERT_STATE_IDLE;
+      
+      if (zbSocCb.pfnCertInstallResultIndCb)
+      {
+        zbSocCb.pfnCertInstallResultIndCb((operation == ZBSOC_CERT_OPER_STOP) ? CERT_RESULT_TERMINATED : CERT_RESULT_WRITING_FAILED);
+      }
+    }
+    else
+    {
+      uint8_t erase = 0xFF;
+      
+      if (operation == ZBSOC_CERT_OPER_CONT)
+      {
+        zbSocCertState++;
+      }
+      
+      switch (zbSocCertState)
+      {
+      case ZBSOC_CERT_STATE_IMPLICIT_CERT:
+        zbSocNVWrite(0x69, 0, ZCL_KE_IMPLICIT_CERTIFICATE_LEN, zbSocCertInfo.implicitCert);
+        break;
+      case ZBSOC_CERT_STATE_DEV_PRIVATE_KEY:
+        zbSocNVWrite(0x6a, 0, ZCL_KE_DEVICE_PRIVATE_KEY_LEN, zbSocCertInfo.devPrivateKey);
+        break;
+      case ZBSOC_CERT_STATE_CA_PUBLIC_KEY:
+        zbSocNVWrite(0x6b, 0, ZCL_KE_CA_PUBLIC_KEY_LEN, zbSocCertInfo.caPublicKey);
+        break;
+      case ZBSOC_CERT_STATE_IEEE_ADDRESS:
+        zbSocNVWrite(0x01, 0, Z_EXTADDR_LEN, zbSocCertInfo.ieeeAddr);
+        break;
+      case ZBSOC_CERT_STATE_ERASE_NWK_INFO:
+        zbSocNVWrite(0x03, 0, 1, &erase);
+        break;
+      case ZBSOC_CERT_STATE_COMPLETE:
+        if (zbSocCb.pfnCertInstallResultIndCb)
+        {
+          zbSocCb.pfnCertInstallResultIndCb(CERT_RESULT_COMPLETED);
+        }
+        zbSocCertState = ZBSOC_CERT_STATE_IDLE;
+        if (zbSocCertForce2Reset)
+        {
+          zbSocResetLocalDevice();
+        }
+        break;
+      }
+    }
+  }
+}
+
+/*************************************************************************************************
  * @fn      processRpcSysDbg()
  *
  * @brief   read and process the RPC debug message from the ZLL controller
@@ -2291,6 +2783,7 @@ void zbSocProcessRpc (void)
           {
             //something went wrong.
             printf("zbSocProcessRpc: failed\n");
+            free(rpcBuff);
             return;
           }
         }
@@ -2314,13 +2807,16 @@ void zbSocProcessRpc (void)
       //Read CMD0
       switch (rpcBuff[0] & MT_RPC_SUBSYSTEM_MASK) 
       {
+        case MT_RPC_SYS_SYS:
+          processRpcSysSys(rpcBuff);
+          break;
         case MT_RPC_SYS_DBG:
           processRpcSysDbg(rpcBuff);        
           break;       
         case MT_RPC_SYS_APP:
           processRpcSysApp(rpcBuff);        
           break;       
-		case MT_RPC_SYS_SBL:
+		    case MT_RPC_SYS_SBL:
           processRpcSysSbl(rpcBuff);		  
           break;
         default:

@@ -57,11 +57,15 @@ uint8_t zclGetLevelCb(uint8_t level, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetHueCb(uint8_t hue, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetSatCb(uint8_t sat, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetTempCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint);
-uint8_t zclGetPowerCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclReadPowerRspCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetHumidCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclZoneSateChangeCb(uint32_t zoneState, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t SblDoneCb(uint8_t status);
 uint8_t SblReportingCb(uint8_t phase, uint32_t location);
+uint8_t certInstallResultIndCb(uint8_t result);
+uint8_t keyEstablishmentStateIndCb(uint8_t state);
+uint8_t zclDisplayMessageIndCb(uint8_t *zclPayload, uint8_t len);
+uint8_t zclPublishPriceIndCb(uint8_t *zclPayload, uint8_t len);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -72,13 +76,16 @@ static zbSocCallbacks_t zbSocCbs =
   zclGetHueCb,            // pfnZclGetHueCb - ZCL response callback for get Hue
   zclGetSatCb,            //pfnZclGetSatCb - ZCL response callback for get Sat
   zclGetTempCb,           //pfnZclGetTempCb - ZCL response callback for get Temp
-  zclGetPowerCb,          //pfnZclGetPowerCb - ZCL response callback for get Power
+  zclReadPowerRspCb,          //pfnZclGetPowerCb - ZCL response callback for get Power
   zclGetHumidCb,           //pfnZclGetTempCb - ZCL response callback for get Temp 
   zclZoneSateChangeCb,     //pfnZclZoneSateChangeCb - ZCL Command indicating Alarm Zone State Change
   SblDoneCb, 	   //pfnBootloadingDoneCb - Bootloader processing ended
   SblReportingCb, 	   //pfnBootloadingProgressReportingCb - Bootloader progress reporting
+  certInstallResultIndCb,  // pfnCertInstallResultIndCb - Certificate Installation result reporting
+  keyEstablishmentStateIndCb,  //pfnkeyEstablishmentStateIndCb - Key Establishment state change reporting
+  zclDisplayMessageIndCb, //pfnZclDisplayMessageIndCb - ZCL response callback for DisplayMessage or request callback for unsolicited message
+  zclPublishPriceIndCb, //pfnZclPublishPriceIndCb - ZCL response callback for GetCurrentMessage or request callback for unsolicited message
 };
-
 
 uint8_t uartDebugPrintsEnabled = 0;
 int current_poll_timeout = -1;
@@ -102,8 +109,8 @@ int main(int argc, char* argv[])
   if( argc < 2 )
   {
     usage(argv[0]);
-    printf("attempting to use /dev/ttyACM0\n");
-	selected_serial_port = "/dev/ttyACM0";
+    printf("attempting to use /dev/ttyACM0\n\n");
+  	selected_serial_port = "/dev/ttyACM0";
   }
   else
   {
@@ -157,7 +164,7 @@ int main(int argc, char* argv[])
   			  //printf("%s: adding fd %d to poll()\n", argv[0], pollFds[pollFdIdx].fd); 	  				
   		  }	
 
-        printf("%s: waiting for poll()\n", argv[0]);
+//        printf("%s: waiting for poll()\n", argv[0]);
 
         poll(pollFds, (numClientFds+1), current_poll_timeout);
 
@@ -166,7 +173,7 @@ int main(int argc, char* argv[])
         //did the poll unblock because of the zllSoC serial?
         if(pollFds[0].revents)
         {
-          printf("Message from ZigBee SoC\n");
+          printf("Message from the ZigBee SoC\n");
           zbSocProcessRpc();
         }
         //did the poll unblock because of activity on the socket interface?
@@ -174,7 +181,7 @@ int main(int argc, char* argv[])
         {
           if ( (pollFds[pollFdIdx].revents) )
           {
-            printf("Message from Socket Sever\n");
+            printf("Message from the client\n");
             socketSeverPoll(pollFds[pollFdIdx].fd, pollFds[pollFdIdx].revents);
           }
         }          
@@ -245,11 +252,11 @@ uint8_t zclGetTempCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint)
   return 0;  
 }
 
-uint8_t zclGetPowerCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint)
+uint8_t zclReadPowerRspCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint)
 {
-  SRPC_CallBack_getPowerRsp(power, nwkAddr, endpoint, 0);
+  SRPC_CallBack_readPowerRsp(power, nwkAddr, endpoint, 0);
 
-  printf("\nzclGetPowerCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    power   : %02x\n\n", 
+  printf("\nzclReadPowerRspCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    power   : %02x\n\n", 
     nwkAddr, endpoint, power); 
   
   return 0;  
@@ -286,4 +293,33 @@ uint8_t SblReportingCb(uint8_t phase, uint32_t location)
 	SRPC_CallBack_loadImageProgress(phase, location);
 	return 0;
 }
+
+uint8_t certInstallResultIndCb(uint8_t result)
+{
+  SRPC_CallBack_certInstallResultInd(result);
+
+  return 0;
+}
+
+uint8_t keyEstablishmentStateIndCb(uint8_t state)
+{
+  SRPC_CallBack_keyEstablishmentStateInd(state);
+
+  return 0;
+}
+
+uint8_t zclDisplayMessageIndCb(uint8_t *zclPayload, uint8_t len)
+{
+  SRPC_CallBack_displayMessageInd(zclPayload, len);
+
+  return 0;
+}
+
+uint8_t zclPublishPriceIndCb(uint8_t *zclPayload, uint8_t len)
+{
+  SRPC_CallBack_publishPriceInd(zclPayload, len);
+
+  return 0;
+}
+
 
