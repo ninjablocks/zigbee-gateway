@@ -55,7 +55,12 @@
 #include <time.h>
 
 #include "zbSocCmd.h"
-
+#include "zbSocTransport.h"
+#if (!HAL_UART_SPI)
+#include "zbSocTransportUart.c"
+#else
+#include "zbSocTransportSpi.c"
+#endif
 
 /*********************************************************************
  * MACROS
@@ -84,22 +89,6 @@ len,   /*RPC payload Len                                      */     \
           + ((uint32_t)((Byte1) & 0x00FF) << 8) \
           + ((uint32_t)((Byte2) & 0x00FF) << 16) \
           + ((uint32_t)((Byte3) & 0x00FF) << 24)))
-
-#define socWrite(fd,rpcBuff,rpcLen) \
-	do { \
-		if (uartDebugPrintsEnabled) \
-		{ \
-			int x; \
-			printf("UART OUT --> %d Bytes: SOF:%02X, Len:%02X, CMD0:%02X, CMD1:%02X, Payload:", (rpcLen), (rpcBuff)[0], (rpcBuff)[1] , (rpcBuff)[2], (rpcBuff)[3] ); \
-			for (x = 4; x < (rpcLen) - 1; x++) \
-			{ \
-			  printf("%02X%s", (rpcBuff)[x], x < (rpcLen) - 1 - 1 ? ":" : ","); \
-			} \
-			printf(" FCS:%02X\n", (rpcBuff)[x]); \
-		} \
-		write((fd),(rpcBuff),(rpcLen)); \
-	} while (0)
-
 
 #define NUM_OF_TIMERS (sizeof(timers) / sizeof(timers[0]))
 			
@@ -405,7 +394,7 @@ extern uint8_t uartDebugPrintsEnabled;
  * LOCAL FUNCTIONS
  */
 static void calcFcs(uint8_t *msg, int size);
-void processRpcSysAppTlInd(uint8_t *TlIndBuff);
+static void processRpcSysAppTlInd(uint8_t *TlIndBuff);
 static void processRpcSysAppNewDevInd(uint8_t *TlIndBuff);
 static void processRpcSysAppZcl(uint8_t *zclRspBuff);
 static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameLen, uint16_t clusterID, uint16_t nwkAddr, uint8_t endpoint);
@@ -565,15 +554,14 @@ void zbSocForceRun(void)
 	uint8_t forceBoot = SB_FORCE_RUN;
 	
 	//Send the bootloader force boot incase we have a bootloader that waits
-	socWrite(serialPortFd,&forceBoot, 1);
+	zbSocTransportWrite(&forceBoot, 1);
 	tcflush(serialPortFd, TCOFLUSH);  
 	
 }
 
 void zbSocClose( void )
 {
-  tcflush(serialPortFd, TCOFLUSH);
-  close(serialPortFd);
+  zbSocTransportClose();
 
   return;
 }
@@ -619,8 +607,7 @@ void zbSocTouchLink(void)
     };
 	  
     calcFcs(tlCmd, sizeof(tlCmd));
-    socWrite(serialPortFd,tlCmd, sizeof(tlCmd));
-    tcflush(serialPortFd, TCOFLUSH);   
+    zbSocTransportWrite(tlCmd, sizeof(tlCmd));  
 }
 
 /*********************************************************************
@@ -647,8 +634,7 @@ void zbSocResetToFn(void)
     };
 	  
     calcFcs(tlCmd, sizeof(tlCmd));
-    socWrite(serialPortFd,tlCmd, sizeof(tlCmd));
-    tcflush(serialPortFd, TCOFLUSH);   
+    zbSocTransportWrite(tlCmd, sizeof(tlCmd));
 }
 
 /*********************************************************************
@@ -675,8 +661,7 @@ void zbSocSendResetToFn(void)
     };
 	  
     calcFcs(tlCmd, sizeof(tlCmd));
-    socWrite(serialPortFd,tlCmd, sizeof(tlCmd));
-    tcflush(serialPortFd, TCOFLUSH);   
+    zbSocTransportWrite(tlCmd, sizeof(tlCmd)); 
 }
 
 /*********************************************************************
@@ -703,8 +688,7 @@ void zbSocOpenNwk(void)
     };
 	  
     calcFcs(cmd, sizeof(cmd));
-    write(serialPortFd,cmd, sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);   
+    zbSocTransportWrite(cmd, sizeof(cmd)); 
 }
 
 /*********************************************************************
@@ -740,10 +724,8 @@ void zbSocSetState(uint8_t state, uint16_t dstAddr, uint8_t endpoint, uint8_t ad
     0x00       //FCS - fill in later
   };
       
-	calcFcs(cmd, sizeof(cmd));
-	
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+  	calcFcs(cmd, sizeof(cmd));  	
+    zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -779,9 +761,8 @@ void zbSocNVWrite(uint16_t id, uint8_t offset, uint8_t len, uint8_t *data)
       
 	calcFcs(cmd, len + 9);
 	
-  socWrite(serialPortFd, cmd, len + 9);
+  zbSocTransportWrite(cmd, len + 9);
   free(cmd);
-  tcflush(serialPortFd, TCOFLUSH);
 }
 
 /*********************************************************************
@@ -1209,10 +1190,8 @@ void zbSocSetLevel(uint8_t level, uint16_t time, uint16_t dstAddr, uint8_t endpo
   		0x00       //FCS - fill in later
   	};    
     
-    calcFcs(cmd, sizeof(cmd));
-    
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+    calcFcs(cmd, sizeof(cmd));    
+    zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -1253,8 +1232,7 @@ void zbSocSetHue(uint8_t hue, uint16_t time, uint16_t dstAddr, uint8_t endpoint,
 	};    
 
   calcFcs(cmd, sizeof(cmd));
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+  zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -1293,9 +1271,8 @@ void zbSocSetSat(uint8_t sat, uint16_t time, uint16_t dstAddr, uint8_t  endpoint
 		0x00       //FCS - fill in later
 	};
 	
-	calcFcs(cmd, sizeof(cmd));
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+  calcFcs(cmd, sizeof(cmd));
+  zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 
@@ -1322,8 +1299,7 @@ void zbSocSblSendMtFrame(uint8_t cmd, uint8_t * payload, uint8_t payload_len)
 		memcpy(buf + 4, payload, payload_len);
 	}
 	calcFcs(buf, payload_len + 5);
-	socWrite(serialPortFd, buf, payload_len + 5);
-	tcflush(serialPortFd, TCOFLUSH);
+	zbSocTransportWrite(buf, payload_len + 5);
 }
 
 
@@ -1348,8 +1324,7 @@ void zbSocResetLocalDevice(void)
 	};
 	
 	calcFcs(cmd, sizeof(cmd));
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+  zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 
@@ -1403,8 +1378,7 @@ void zbSocSblEnableBootloader()
 		SB_FORCE_BOOT,
 	};
 	
-	socWrite(serialPortFd,cmd,sizeof(cmd));
-	tcflush(serialPortFd, TCOFLUSH);
+	zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 
@@ -1432,8 +1406,7 @@ void zbSocRemoveDevice(uint8_t ieeeAddr[])
 	memcpy(cmd + 4, ieeeAddr, Z_EXTADDR_LEN);
 	
 	calcFcs(cmd, sizeof(cmd));
-	socWrite(serialPortFd,cmd,sizeof(cmd));
-	tcflush(serialPortFd, TCOFLUSH);		
+	zbSocTransportWrite(cmd,sizeof(cmd));	
 }
 
 /*********************************************************************
@@ -1475,8 +1448,7 @@ void zbSocSetHueSat(uint8_t hue, uint8_t sat, uint16_t time, uint16_t dstAddr, u
   }; 
 
   calcFcs(cmd, sizeof(cmd));
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);        
+  zbSocTransportWrite(cmd,sizeof(cmd));       
 }
 
 /*********************************************************************
@@ -1517,10 +1489,8 @@ void zbSocAddGroup(uint16_t groupId, uint16_t dstAddr, uint8_t endpoint, uint8_t
 	
 	printf("zbSocAddGroup: dstAddr 0x%x\n", dstAddr);
     
-	calcFcs(cmd, sizeof(cmd));
-	
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+  calcFcs(cmd, sizeof(cmd));	
+  zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -1560,10 +1530,8 @@ void zbSocStoreScene(uint16_t groupId, uint8_t sceneId, uint16_t dstAddr, uint8_
 		0x00       //FCS - fill in later
 	};
     
-	calcFcs(cmd, sizeof(cmd));
-	
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+  calcFcs(cmd, sizeof(cmd));	
+  zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -1603,10 +1571,8 @@ void zbSocRecallScene(uint16_t groupId, uint8_t sceneId, uint16_t dstAddr, uint8
 		0x00       //FCS - fill in later
 	};
     
-	calcFcs(cmd, sizeof(cmd));
-	
-  socWrite(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+  calcFcs(cmd, sizeof(cmd));	
+  zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -1650,15 +1616,13 @@ void zbSocBind(uint16_t srcNwkAddr, uint8_t srcEndpoint, uint8_t srcIEEE[8], uin
   	dstEndpoint,                  /*Dst endpoint for the binding*/  	  	
 		0x00       //FCS - fill in later
 	};
-      
-	calcFcs(cmd, sizeof(cmd));
-	
-	/*printf("zbSocBind: srcNwkAddr=0x%x, srcEndpoint=0x%x, srcIEEE=0x%x:%x:%x:%x:%x:%x:%x:%x, dstEndpoint=0x%x, dstIEEE=0x%x:%x:%x:%x:%x:%x:%x:%x, clusterID:%x\n", 
+      	
+	printf("zbSocBind: srcNwkAddr=0x%x, srcEndpoint=0x%x, srcIEEE=0x%x:%x:%x:%x:%x:%x:%x:%x, dstEndpoint=0x%x, dstIEEE=0x%x:%x:%x:%x:%x:%x:%x:%x, clusterID:%x\n", 
 	          srcNwkAddr, srcEndpoint, srcIEEE[0], srcIEEE[1], srcIEEE[2], srcIEEE[3], srcIEEE[4], srcIEEE[5], srcIEEE[6], srcIEEE[7], 
-	          srcEndpoint, dstIEEE[0], dstIEEE[1], dstIEEE[2], dstIEEE[3], dstIEEE[4], dstIEEE[5], dstIEEE[6], dstIEEE[7], clusterID);*/
-	
-  write(serialPortFd,cmd,sizeof(cmd));
-  tcflush(serialPortFd, TCOFLUSH);
+	          srcEndpoint, dstIEEE[0], dstIEEE[1], dstIEEE[2], dstIEEE[3], dstIEEE[4], dstIEEE[5], dstIEEE[6], dstIEEE[7], clusterID);
+	                
+	calcFcs(cmd, sizeof(cmd));		
+  zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -1695,10 +1659,8 @@ void zbSocGetState(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   		0x00       //FCS - fill in later
   	};
       
-  	calcFcs(cmd, sizeof(cmd));
-  	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+  	calcFcs(cmd, sizeof(cmd));  	
+    zbSocTransportWrite(cmd,sizeof(cmd));
 } 
  
 /*********************************************************************
@@ -1736,9 +1698,7 @@ void zbSocGetLevel(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   	};
       
   	calcFcs(cmd, sizeof(cmd));
-  	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+  	zbSocTransportWrite(cmd,sizeof(cmd));
 } 
 
 /*********************************************************************
@@ -1776,9 +1736,7 @@ void zbSocGetHue(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   	};
       
   	calcFcs(cmd, sizeof(cmd));
-  	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+  	zbSocTransportWrite(cmd,sizeof(cmd));
 } 
 
 /*********************************************************************
@@ -1816,9 +1774,7 @@ void zbSocGetSat(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   	};
       
   	calcFcs(cmd, sizeof(cmd));
-  	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+  	zbSocTransportWrite(cmd,sizeof(cmd));
 } 
 /*********************************************************************
  * @fn      zbSocPowerRead
@@ -1856,8 +1812,7 @@ void zbSocReadPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
       
   	calcFcs(cmd, sizeof(cmd));
   	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+    zbSocTransportWrite(cmd,sizeof(cmd));
 } 
 
 /*********************************************************************
@@ -1894,10 +1849,8 @@ void zbSocGetTemp(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   		0x00       //FCS - fill in later
   	};
       
-  	calcFcs(cmd, sizeof(cmd));
-  	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+  	calcFcs(cmd, sizeof(cmd));  	
+    zbSocTransportWrite(cmd,sizeof(cmd));
 } 
 
 /*********************************************************************
@@ -1936,8 +1889,7 @@ void zbSocGetHumid(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
       
   	calcFcs(cmd, sizeof(cmd));
   	
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+    zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 
@@ -1971,8 +1923,7 @@ void zbSocGetLastMessage(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
     
     calcFcs(cmd, sizeof(cmd));
     
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+    zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*********************************************************************
@@ -2006,8 +1957,7 @@ void zbSocGetCurrentPrice(uint8_t rxOnIdle, uint16_t dstAddr, uint8_t endpoint, 
     
     calcFcs(cmd, sizeof(cmd));
     
-    socWrite(serialPortFd,cmd,sizeof(cmd));
-    tcflush(serialPortFd, TCOFLUSH);
+    zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
 /*************************************************************************************************
@@ -2019,7 +1969,7 @@ void zbSocGetCurrentPrice(uint8_t rxOnIdle, uint16_t dstAddr, uint8_t endpoint, 
  *
  * @return  length of current Rx Buffer
  *************************************************************************************************/
-void processRpcSysAppTlInd(uint8_t *TlIndBuff)
+static void processRpcSysAppTlInd(uint8_t *TlIndBuff)
 {
   epInfo_t epInfo;    
     
@@ -2053,6 +2003,8 @@ static void processRpcSysAppNewDevInd(uint8_t *TlIndBuff)
   epInfo_t epInfo;
   uint8_t i;    
     
+  memset(&epInfo, 0, sizeof(epInfo));
+  
   epInfo.status = 0;
   
   epInfo.nwkAddr = BUILD_UINT16(TlIndBuff[0], TlIndBuff[1]);
@@ -2070,7 +2022,7 @@ static void processRpcSysAppNewDevInd(uint8_t *TlIndBuff)
     epInfo.IEEEAddr[i] = *TlIndBuff++;
   }
   
-//  printf("processRpcSysAppNewDevInd: %x:%x\n",  epInfo.nwkAddr, epInfo.endpoint);
+  //printf("processRpcSysAppNewDevInd: %x:%x\n",  epInfo.nwkAddr, epInfo.endpoint);
   if(zbSocCb.pfnNewDevIndicationCb)
   {
     zbSocCb.pfnNewDevIndicationCb(&epInfo);

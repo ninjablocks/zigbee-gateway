@@ -40,43 +40,18 @@
 
 package com.lightingcontroller.Zigbee;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
-import java.net.UnknownHostException;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.TimeUnit;
-
 import com.lightingcontroller.Zigbee.ZigbeeScene;
 
-import android.app.Activity;
-import android.app.ProgressDialog;
-import android.content.SharedPreferences;
-import android.content.SharedPreferences.Editor;
-
-import android.graphics.Color;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
-import android.os.Parcelable;
-import android.os.SystemClock;
-import android.util.Log;
-import android.widget.Toast;
-
-public class ZigbeeSrpcClient {
-	
+public class ZigbeeSrpcClient {  
+    
 	static Thread thread;
 	static Socket kkSocket;
 	static OutputStream outStream;
@@ -129,6 +104,7 @@ public class ZigbeeSrpcClient {
 	private static final byte SRPC_RECALL_SCENE       = (byte) 0x92;	
 	private static final byte SRPC_IDENTIFY_DEVICE    = (byte) 0x93;	
 	private static final byte SRPC_CHANGE_DEVICE_NAME = (byte) 0x94;   
+	private static final byte SRPC_REMOVE_DEVICE 	  = (byte) 0x95;   
 
 	//SRPC AfAddr Addr modes ID's	
 	public static final byte AddrNotPresent = 0;
@@ -138,8 +114,6 @@ public class ZigbeeSrpcClient {
 	public static final byte AddrBroadcast = 1;
 			  
 	public static final String PREFS_NAME = "MyPrefsFile";
-	private static Timer ResponseTimer;
-	private static Handler ResponseTimerHandler;
 	
 	static byte[] srpcResponse;		
 	
@@ -752,6 +726,40 @@ public class ZigbeeSrpcClient {
 		
 		return true;
 	}			
+	
+	public static boolean removeDevice(short network_a, char end_a, byte ieee_a[])
+	{
+		byte[] msg = new byte[13];
+		byte  msgIdx;
+
+		//set SRPC len and CMD ID
+		msg[SRPC_CMD_ID_POS] = SRPC_REMOVE_DEVICE;
+		msg[SRPC_CMD_LEN_POS] = 11;
+		
+		//set ptr to point to data
+		msgIdx=2;
+		
+		//set src nwk address		
+		msg[msgIdx++] = (byte) (network_a & 0xFF);
+		msg[msgIdx++] = (byte) ((network_a & 0xFF00)>>8);		
+
+		//set Ep
+		msg[msgIdx++] = (byte) end_a;
+		
+		//set ieee of a
+		msg[msgIdx++] = ieee_a[0];
+		msg[msgIdx++] = ieee_a[1];
+		msg[msgIdx++] = ieee_a[2];
+		msg[msgIdx++] = ieee_a[3];
+		msg[msgIdx++] = ieee_a[4];
+		msg[msgIdx++] = ieee_a[5];
+		msg[msgIdx++] = ieee_a[6];
+		msg[msgIdx++] = ieee_a[7];
+		
+		sendSrpc(msg);
+		
+		return true;
+	}				
 
 	public static void getDevices()
 	{
@@ -923,22 +931,25 @@ public class ZigbeeSrpcClient {
 		sendSrpc(msg);		
 	}	
 	
-	public static void changeDeviceName(ZigbeeDevice device, String deviceName)
+	public static void changeDeviceName(short nwkAddr, char endPoint, String deviceName)
 	{
-		byte[] msg = new byte[4 + deviceName.length()];
+		byte[] msg = new byte[6 + deviceName.length()];
 		byte msgIdx;
 
 		//set SRPC len and CMD ID
 		msg[SRPC_CMD_ID_POS] = SRPC_CHANGE_DEVICE_NAME;
-		msg[SRPC_CMD_LEN_POS] = (byte) (2 + deviceName.length());
+		msg[SRPC_CMD_LEN_POS] = (byte) (4 + deviceName.length());
 		
 		//set ptr to point to data
 		msgIdx=2;		
 
 		//set afAddrMode_t nwk address		
-		msg[msgIdx++] = (byte) (device.NetworkAddr & 0xFF);
-		msg[msgIdx++] = (byte) ((device.NetworkAddr & 0xFF00)>>8);	
+		msg[msgIdx++] = (byte) (nwkAddr & 0xFF);
+		msg[msgIdx++] = (byte) ((nwkAddr & 0xFF00)>>8);	
 
+		msg[msgIdx++] = (byte) endPoint;	
+		//pad out pan ID
+		
 		msg[msgIdx++] = (byte) deviceName.length();
 		for(int i = 0; i < deviceName.length(); i++)
 		{
@@ -953,22 +964,6 @@ public class ZigbeeSrpcClient {
 		int Port;
 		
 		Port = Integer.parseInt(gatewayPort); 				        
-/*		
-		try { 			 	        
-			kkSocket = new Socket(gatewayIp, Port);
-			//kkSocket = new Socket(); 
-            SocketAddress adr = new InetSocketAddress(gatewayIp,Port);
-			kkSocket.
-            kkSocket.connect(adr, 5000); 			
-		} catch (UnknownHostException e) { 
-			e.printStackTrace();
-			return 1;
-			//errorMessage("Unknown host" + gatewayIp); 
-		} catch (IOException e) {
-			e.printStackTrace();
-			return 1;
-	        //errorMessage("Couldn't get I/O for the connection to: " + gatewayIp); 
-		}*/
 		
         SocketAddress sockaddr = new InetSocketAddress(gatewayIp, Port);
         kkSocket = new Socket();
@@ -979,10 +974,7 @@ public class ZigbeeSrpcClient {
 		} 
         
         
-        if (kkSocket.isConnected()) { 
-		
-			ZigbeeAssistant.gateWayConnected = true;
-			
+        if (kkSocket.isConnected()) { 			
 			try {
 				outStream = kkSocket.getOutputStream();
 			} catch (IOException e) {
@@ -1021,7 +1013,6 @@ public class ZigbeeSrpcClient {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-		    ZigbeeAssistant.gateWayConnected = false;
 		}
 	}
 	

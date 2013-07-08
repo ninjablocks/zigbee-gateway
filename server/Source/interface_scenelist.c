@@ -227,7 +227,7 @@ static void writeSceneListToFile( sceneRecord_t *scene )
     fwrite((const void *) &(scene->sceneNameStr[0]), 1, 1, fpSceneFile);    
     fwrite((const void *) &(scene->sceneNameStr[1]), (scene->sceneNameStr[0]), 1, fpSceneFile);
     
-    //socWrite scene delimeter
+    //write scene delimeter
     fwrite((const void *) ";", 1, 1, fpSceneFile);
     
     fflush(fpSceneFile);

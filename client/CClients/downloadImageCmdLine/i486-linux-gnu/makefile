@@ -19,15 +19,15 @@ CFLAGS= -c -Wall -g -std=gnu99
 all: dlimage.bin
 
 dlimage.bin: dlimage.o socket_client.o
-	$(CC) $(LIBS) dlimage.o socket_client.o -o dlimage.bin
+	$(CC) dlimage.o socket_client.o $(LIBS) -o dlimage.bin
 
 # rule for file "dlimage.o".
 dlimage.o: ../Source/dlimage.c
 	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../Source/dlimage.c
 
 # rule for file "socket_client.o".
-socket_client.o: $(PROJ_DIR)../Source/socket_client.h $(PROJ_DIR)../Source/socket_client.c
-	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../Source/socket_client.c
+socket_client.o: $(PROJ_DIR)../../Source/socket_client.h $(PROJ_DIR)../../Source/socket_client.c
+	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../../Source/socket_client.c
 
 # rule for cleaning files generated during compilations.
 clean:

@@ -141,7 +141,7 @@ int main(int argc, char* argv[])
   {          
     int numClientFds = socketSeverGetNumClients(); 
     
-	  //poll on client socket fd's and the ZllSoC serial port for any activity
+	  //poll on client socket fd's and the zbSoC serial port for any activity
 		if(numClientFds)
 		{
 		  int pollFdIdx;  		   
@@ -153,8 +153,25 @@ int main(int argc, char* argv[])
 		  {
 		    //set the serialPortFd serial port FD in the poll file descriptors
 		    pollFds[0].fd = serialPortFd;
-  			pollFds[0].events = POLLIN;
-  			
+#if (!HAL_UART_SPI)
+          //Fd will be a characture driver
+          pollFds[0].events = POLLIN;
+#else	      
+          //Fd Will be GPIO
+    	  pollFds[0].events = POLLPRI;
+
+          //try to read any messages that might already be wating
+          if(zbSocPhyPoll())
+          {
+            zbSocProcessRpc();
+          }
+    	 
+          //flush events
+          int buf[1];
+          lseek(pollFds[0].fd, SEEK_SET, 0);
+          read(pollFds[0].fd, buf, 1);
+            	  
+#endif  			
 		    //Set the socket file descriptors  		    
 	  	  socketSeverGetClientFds(client_fds, numClientFds);  			    	  	    	  	 
 		  	for(pollFdIdx=0; pollFdIdx < numClientFds; pollFdIdx++)

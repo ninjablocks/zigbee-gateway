@@ -375,33 +375,8 @@ public class ZigbeeDevice {
 			}
 		}
 
-		//String notification = "New "+Type+" connected!"; 
-		//ZigbeeNotification.showNotification(notification);
-	}
-	
-	public void addCluster(boolean in, int ClusterId)
-	{
-		if (in)
-		{
-			switch (ClusterId)
-			{
-			case (0x0402): hasThermometer = true; 			break;
-			case (0x0006): hasSwitchable = true; 			break;
-			case (0x0008): hasDimmable = true; 			break;
-			case (0x0300): hasColourable = true; 			break;
-			case (0x0702): hasPowerUsage = true; 			break;
-			}
-		} else
-		{
-			switch (ClusterId)
-			{
-			case (0x0006): hasOutSwitch = true; 			break;		
-			case (0x0008): hasOutLeveL = true; 			break;	
-			case (0x0300): hasOutColor = true; 			break;		
-			case (0x0005): hasOutScene = true; 			break;	
-			case (0x0004): hasOutGroup = true; 			break;				
-			}			
-		}
+		String notification = "New Device:\n"+Name; 
+		ZigbeeNotification.showNotification(notification);
 	}
 
 	public byte getCurrentState() {

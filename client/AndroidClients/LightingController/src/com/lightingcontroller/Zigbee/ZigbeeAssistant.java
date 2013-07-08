@@ -40,32 +40,21 @@
 
 package com.lightingcontroller.Zigbee;
 
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.HashMap;
-import java.util.List;
-
 import com.lightingcontroller.Zigbee.ZigbeeScene;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import android.app.Activity;
 import android.graphics.Color;
 import android.util.Log;
-import android.widget.Toast;
+import android.view.View;
 
 public class ZigbeeAssistant implements Runnable {
-
-	//public static final boolean USE_JNI = true;
-	public static final boolean USE_JNI = false;
-
-	public static boolean gateWayConnected = false;
-	public static boolean initializing = true;
 	
 	private static String TAG = "ZigbeeAssistant";
 	public static ZigbeeSrpcClient zigbeeSrpcClient;
 	public static String ZigbeeSrpcClientGatewayIp = "192.168.1.220";
-	
-	static Thread thread;
-	static Activity mainAct;
 	
 	static List<ZigbeeDevice> ourDevices = new ArrayList<ZigbeeDevice>();
 	static List<ZigbeeGroup> ourGroups =  new ArrayList<ZigbeeGroup>();
@@ -73,30 +62,13 @@ public class ZigbeeAssistant implements Runnable {
 	
 	private static int LightDeviceIdx = 0;
 
-	static public int lastTempReading = 65535;
-	static public List<Integer> powerReadings = new ArrayList<Integer>();
-	static public List<Long> powerReadingsTimes = new ArrayList<Long>();
-	static public HashMap<Short,Long> nwrkToIEEE = new HashMap<Short,Long>();
-		
-	public static native int runMain();
-	public static native boolean isRunning();
-	public static native short requestThermostatReading(short networkaddr, char end); // Get ThermostatReading
-	public static native short requestPowerReading(short networkaddr, char end); // Get ThermostatReading
-	public static native void setDeviceState(short networkaddr, char end, boolean state);	// Set device state on/off
-	public static native void setDeviceLevel(short networkaddr, char end, char level, short transitionTime);	// Set device level/dim
-	public static native void setDeviceColour(short networkaddr, char end, char hue, char saturation, short transitionTime);	// Set device Color	
+	public void run() {
+		Log.d(TAG, "Begin Zigbee");	
+	}	
 	
-	public static native void bindDevices(short network_a, char end_a, int ieel_a, int ieeh_a,  
-									  	  short network_b, char end_b, int ieel_b, int ieeh_b,
-									  	  short clusterId);	// Bind Devices
-	
-	
-	
-	static
-	{
-		if(USE_JNI)			
-		   System.loadLibrary("zigbee_assistant_jni");  		//Loading native library	
-		
+	public static void enableNotify(Activity activity, int timeOut)	
+	{		
+		ZigbeeNotification.init(activity, timeOut);		
 	}	
 	
 	public static void notifyUser(String s)
@@ -110,10 +82,7 @@ public class ZigbeeAssistant implements Runnable {
 	}	
 	
 	public static void addGroup(ZigbeeDevice d, String groupName )
-	{		
-		//ZigbeeGroup newGroup = new ZigbeeGroup(groupName);
-		//ourGroups.add(newGroup);		
-		
+	{				
 		ZigbeeSrpcClient.addGroup((short) d.NetworkAddr,d.EndPoint, groupName);
 	}
 	
@@ -127,7 +96,7 @@ public class ZigbeeAssistant implements Runnable {
 		ZigbeeSrpcClient.recallScene(sceneName, groupId );
 	}
 
-	public void descoverGroups()
+	public static void descoverGroups()
 	{
 		ZigbeeSrpcClient.discoverGroups( );
 	}
@@ -140,40 +109,7 @@ public class ZigbeeAssistant implements Runnable {
 	public static List<ZigbeeScene> getScenes()
 	{
 		return ourScenes;
-	}
-	
-	public static void deviceAnnounce(int nwrk, long ieee1) 
-	{
-		// TODO Auto-generated method stub
-
-		if (nwrkToIEEE.containsKey(nwrk))
-			nwrkToIEEE.remove(nwrk);
-		nwrkToIEEE.put((short)nwrk, ieee1);		
-	}
-
-	
-	public static void deviceAnnounce(int nwrk, int ieee1, int ieee2)
-	{
-		long t2;
-		long t = (((long)ieee2))<<32;
-		
-		if(ieee1 < 0)
-		{
-			long t3 = 2147483647;
-			t3 = t3 + 2147483647;
-			t3 = t3 + 2;
-			t2 = (((long)ieee1));		
-			t2 = t2+t3;
-		}
-		else
-		{
-			t2 = ieee1;			
-		}
-		t = t | t2;
-		if (nwrkToIEEE.containsKey(nwrk))
-			nwrkToIEEE.remove(nwrk);
-		nwrkToIEEE.put((short)nwrk, t);
-	}
+	}	
 
 	public static void newDevice(int ProfileId, int DeviceId, int NetworkAddr, char EndPoint, byte ieee[], String deviceName)
 	{
@@ -298,8 +234,15 @@ public class ZigbeeAssistant implements Runnable {
 		{
 			d.Name = newName;
 			//Need to push this back to server
-			ZigbeeSrpcClient.changeDeviceName(d, newName);
+			ZigbeeSrpcClient.changeDeviceName((short)d.NetworkAddr,d.EndPoint, newName);
 		}
+	}
+
+	public static boolean removeDevice(ZigbeeDevice d)
+	{			
+		ZigbeeSrpcClient.removeDevice((short)d.NetworkAddr,d.EndPoint, d.Ieee);
+		
+		return true;
 	}
 	
 	public static ZigbeeDevice ifDeviceExists(int NetworkAddr, char EndPoint)
@@ -328,18 +271,6 @@ public class ZigbeeAssistant implements Runnable {
 				return true;
 		}
 		return false;	
-	}
-	
-	public static void newDeviceCluster(int NetworkAddr, char EndPoint, boolean in, int ClusterId)
-	{
-		ZigbeeDevice toAddto = ifDeviceExists(NetworkAddr, EndPoint);
-		if (toAddto == null) 
-		{
-			Log.w(TAG, "Couldn't find Device");
-			return;
-		}
-		
-		toAddto.addCluster(in, ClusterId);	
 	}
 	
 	public ZigbeeAssistant()
@@ -404,19 +335,11 @@ public class ZigbeeAssistant implements Runnable {
 				s.add(d);
 		}
 		return s;
-	}	
-	
-	public static void haveTemperature(int NetworkAddr, char EndPoint, int data)
-	{
-		lastTempReading = data;
-	}
+	}		
 	
 	public static void setDeviceState(ZigbeeDevice d, boolean state)
 	{
-		if(USE_JNI)			
-			setDeviceState((short) d.NetworkAddr,d.EndPoint,state);
-		else
-			ZigbeeSrpcClient.setDeviceState((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint,state);			
+		ZigbeeSrpcClient.setDeviceState((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint,state);			
 	}
 
 	public static void setDeviceState(ZigbeeGroup g, boolean state)
@@ -428,23 +351,17 @@ public class ZigbeeAssistant implements Runnable {
 	{
 		float[] hsv = new float[3];
 		Color.colorToHSV(colour, hsv);
-		if (USE_JNI)
-			setDeviceColour((short) d.NetworkAddr,d.EndPoint,(char)((hsv[0]/360)*0xFF), (char)(hsv[1]*0xFF),(short)10);
-		else
-			ZigbeeSrpcClient.setDeviceColor((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint,(char)((hsv[0]/360)*0xFF), (char)(hsv[1]*0xFF),(short)10);
+		ZigbeeSrpcClient.setDeviceColor((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint,(char)((hsv[0]/360)*0xFF), (char)(hsv[1]*0xFF),(short)10);
 	}
 
 	public static void setDeviceHueSat(ZigbeeDevice d, byte hue, byte sat)
 	{
-		if (USE_JNI)
-			setDeviceColour((short) d.NetworkAddr,d.EndPoint,(char) hue, (char) sat,(short)10);
-		else
-			ZigbeeSrpcClient.setDeviceColor((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint, (char) hue, (char) sat,(short)10);
+		ZigbeeSrpcClient.setDeviceColor((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint, (char) hue, (char) sat,(short)10);
 	}
 
 	public static void setDeviceHueSat(ZigbeeGroup g, byte hue, byte sat)
 	{
-			ZigbeeSrpcClient.setDeviceColor((short) g.getGroupId(), ZigbeeSrpcClient.AddrGroup, (char) 0xFF, (char) hue, (char) sat,(short)10);
+		ZigbeeSrpcClient.setDeviceColor((short) g.getGroupId(), ZigbeeSrpcClient.AddrGroup, (char) 0xFF, (char) hue, (char) sat,(short)10);
 	}	
 	
 	public static void setDeviceLevel(ZigbeeDevice d, int colour)
@@ -456,15 +373,12 @@ public class ZigbeeAssistant implements Runnable {
 	
 	public static void setDeviceLevel(ZigbeeDevice d, char level)
 	{
-		if(USE_JNI)	
-			setDeviceLevel((short) d.NetworkAddr,d.EndPoint,level,(short)10);
-		else
-			ZigbeeSrpcClient.setDeviceLevel((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint,level,(short)10);
+		ZigbeeSrpcClient.setDeviceLevel((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint,level,(short)10);
 	}
 
 	public static void setDeviceLevel(ZigbeeGroup g, char level)
 	{
-			ZigbeeSrpcClient.setDeviceLevel((short) g.getGroupId(), ZigbeeSrpcClient.AddrGroup, (char) 0xFF,level,(short)10);
+		ZigbeeSrpcClient.setDeviceLevel((short) g.getGroupId(), ZigbeeSrpcClient.AddrGroup, (char) 0xFF,level,(short)10);
 	}	
 
 	public static void getDeviceState(ZigbeeDevice d)
@@ -485,23 +399,5 @@ public class ZigbeeAssistant implements Runnable {
 	public static void getDeviceSat(ZigbeeDevice d)
 	{
 		ZigbeeSrpcClient.getDeviceSat((short) d.NetworkAddr, ZigbeeSrpcClient.Addr16Bit, d.EndPoint);			
-	}
-	
-	public void run() {
-		if(USE_JNI)
-		{
-			Log.d(TAG, "Begin Zigbee");
-			final int returnvalue = runMain();
-			mainAct.runOnUiThread(new Runnable() {
-				public void run() {
-				Toast.makeText(mainAct, "Zigbee has failed ("+returnvalue+") \n - Is the dongle connected and chmodded?", Toast.LENGTH_LONG).show();
-			}
-			});
-		}
-		else
-		{
-			Log.d(TAG, "Begin Zigbee");		
-			zigbeeSrpcClient = new ZigbeeSrpcClient();
-		}			
-	}
+	}	
 }

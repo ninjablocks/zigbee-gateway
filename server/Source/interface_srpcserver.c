@@ -756,58 +756,37 @@ static uint8_t SRPC_removeDevice(uint8_t *pBuf, uint32_t clientFd)
  */
 uint8_t SRPC_bindDevices(uint8_t *pBuf, uint32 clientFd)
 {  
-  afAddrType_t dstAddrA; 
-  uint8_t ieeA[8]; 
-  afAddrType_t dstAddrB; 
-  uint8_t ieeB[8]; 
-  uint16_t clusterId;
+  uint16_t srcNwkAddr;
+  uint8_t srcEndpoint;
+  uint8 srcIEEE[8];
+  uint8_t dstEndpoint;
+  uint8 dstIEEE[8];
+  uint16 clusterId;
    
   //printf("SRPC_bindDevices++\n");   
         
   //increment past SRPC header
   pBuf+=2;  
   
-  /* Destination Address A*/
-  dstAddrA.addrMode = (afAddrMode_t)*pBuf++;   
-  if ( dstAddrA.addrMode == (afAddrMode_t) afAddr64Bit )
-  {
-    memcpy( dstAddrA.addr.extAddr, pBuf, Z_EXTADDR_LEN );
-  }
-  else
-  {
-    dstAddrA.addr.shortAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
-  }
-  /* The short address occupies LSB two bytes */
-  pBuf += Z_EXTADDR_LEN;  
+  /* Src Address */
+  srcNwkAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
+  pBuf += 2;  
 
-  dstAddrA.endPoint = *pBuf++;
+  srcEndpoint = *pBuf++;
   
-  memcpy(ieeA, pBuf, Z_EXTADDR_LEN);
+  memcpy(srcIEEE, pBuf, Z_EXTADDR_LEN);
   pBuf += Z_EXTADDR_LEN;  
 
-  /* Destination Address B*/
-  dstAddrB.addrMode = (afAddrMode_t)*pBuf++;   
-  if ( dstAddrB.addrMode == (afAddrMode_t) afAddr64Bit )
-  {
-    memcpy( dstAddrB.addr.extAddr, pBuf, Z_EXTADDR_LEN );
-  }
-  else
-  {
-    dstAddrB.addr.shortAddr = BUILD_UINT16( pBuf[0], pBuf[1] );
-  }
-  /* The short address occupies LSB two bytes */
-  pBuf += Z_EXTADDR_LEN;
-
-  dstAddrB.endPoint = *pBuf++;
+  dstEndpoint = *pBuf++;
     
-  memcpy(ieeB, pBuf, Z_EXTADDR_LEN);
+  memcpy(dstIEEE, pBuf, Z_EXTADDR_LEN);
   pBuf += Z_EXTADDR_LEN;   
   
   clusterId = BUILD_UINT16(pBuf[0], pBuf[1]);
   pBuf += 2;     
   
-  //TODO: implement zbSocBind
-  
+  zbSocBind(srcNwkAddr, srcEndpoint, srcIEEE, dstEndpoint, dstIEEE, clusterId);
+
   return 0;
 }
 
