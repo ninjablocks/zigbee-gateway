@@ -49,55 +49,56 @@ extern "C"
 #include "interface_devicelist.h"
 
 //define the outgoing RPSC command ID's
-#define SRPC_NEW_DEVICE                   0x0001
-#define SRPC_DEV_ANNCE                    0x0002
-#define SRPC_SIMPLE_DESC                  0x0003
-#define SRPC_TEMP_READING                 0x0004
+#define SRPC_NEW_DEVICE     0x0001
+#define SRPC_DEV_ANNCE		      0x0002
+#define SRPC_SIMPLE_DESC	      0x0003
+#define SRPC_TEMP_READING       0x0004
 #define SRPC_READ_POWER_RSP               0x0005
-#define SRPC_PING                         0x0006
-#define SRPC_GET_DEV_STATE_RSP            0x0007	
-#define SRPC_GET_DEV_LEVEL_RSP            0x0008
-#define SRPC_GET_DEV_HUE_RSP              0x0009
-#define SRPC_GET_DEV_SAT_RSP              0x000a
-#define SRPC_ADD_GROUP_RSP                0x000b
-#define SRPC_GET_GROUP_RSP                0x000c
-#define SRPC_ADD_SCENE_RSP                0x000d
-#define SRPC_GET_SCENE_RSP                0x000e
-#define SRPC_HUMID_READING                0x000f
-#define SRPC_ZONESTATE_CHANGE             0x0010
-#define SRPC_SBL_RSP                      0x0011
-#define SRPC_SBL_PROGRESS                 0x0012
+#define SRPC_PING               0x0006
+#define SRPC_GET_DEV_STATE_RSP  0x0007	
+#define SRPC_GET_DEV_LEVEL_RSP  0x0008
+#define SRPC_GET_DEV_HUE_RSP    0x0009
+#define SRPC_GET_DEV_SAT_RSP    0x000a
+#define SRPC_ADD_GROUP_RSP      0x000b
+#define SRPC_GET_GROUP_RSP      0x000c
+#define SRPC_ADD_SCENE_RSP      0x000d
+#define SRPC_GET_SCENE_RSP      0x000e
+#define SRPC_HUMID_READING      0x000f
+#define SRPC_ZONESTATE_CHANGE   0x0010
+#define SRPC_SBL_RSP     0x0011
+#define SRPC_SBL_PROGRESS 0x0012
 #define SRPC_CERT_INSTALL_RESULT_IND      0x0013
 #define SRPC_KEY_ESTABLISHMENT_STATE_IND  0x0014
 #define SRPC_DISPLAY_MESSAGE_IND          0x0015
 #define SRPC_PUBLISH_PRICE_IND            0x0016
+#define SRPC_DEVICE_REMOVED 0x0017
 
 //define incoming RPCS command ID's
-#define SRPC_CLOSE               0x80
-#define SRPC_GET_DEVICES         0x81
-#define SRPC_SET_DEV_STATE       0x82	
-#define SRPC_SET_DEV_LEVEL       0x83	
-#define SRPC_SET_DEV_COLOR       0x84
-#define SRPC_GET_DEV_STATE       0x85	
-#define SRPC_GET_DEV_LEVEL       0x86	
-#define SRPC_GET_DEV_HUE         0x87
-#define SRPC_GET_DEV_SAT         0x88
-#define SRPC_BIND_DEVICES        0x89
-#define SRPC_GET_THERM_READING   0x8a
+#define SRPC_CLOSE              0x80
+#define SRPC_GET_DEVICES        0x81
+#define SRPC_SET_DEV_STATE      0x82	
+#define SRPC_SET_DEV_LEVEL      0x83	
+#define SRPC_SET_DEV_COLOR      0x84
+#define SRPC_GET_DEV_STATE      0x85	
+#define SRPC_GET_DEV_LEVEL      0x86	
+#define SRPC_GET_DEV_HUE        0x87
+#define SRPC_GET_DEV_SAT        0x88
+#define SRPC_BIND_DEVICES       0x89
+#define SRPC_GET_THERM_READING  0x8a
 #define SRPC_READ_POWER          0x8b
-#define SRPC_DISCOVER_DEVICES    0x8c
-#define SRPC_SEND_ZCL            0x8d
-#define SRPC_GET_GROUPS          0x8e	
-#define SRPC_ADD_GROUP           0x8f	
-#define SRPC_GET_SCENES          0x90	
-#define SRPC_STORE_SCENE         0x91	
-#define SRPC_RECALL_SCENE        0x92	
-#define SRPC_IDENTIFY_DEVICE     0x93	
-#define SRPC_CHANGE_DEVICE_NAME  0x94
-#define SRPC_REMOVE_DEVICE       0x95
-#define SRPC_GET_HUMID_READING   0x96
-#define SRPC_SBL_DOWNLOAD_IMAGE  0x97
-#define SRPC_SBL_ABORT           0x98
+#define SRPC_DISCOVER_DEVICES   0x8c
+#define SRPC_SEND_ZCL           0x8d
+#define SRPC_GET_GROUPS         0x8e	
+#define SRPC_ADD_GROUP          0x8f	
+#define SRPC_GET_SCENES         0x90	
+#define SRPC_STORE_SCENE        0x91	
+#define SRPC_RECALL_SCENE       0x92	
+#define SRPC_IDENTIFY_DEVICE    0x93	
+#define SRPC_CHANGE_DEVICE_NAME 0x94
+#define SRPC_REMOVE_DEVICE      0x95
+#define SRPC_GET_HUMID_READING  0x96
+#define SRPC_SBL_DOWNLOAD_IMAGE 0x97
+#define SRPC_SBL_ABORT          0x98
 #define SRPC_INSTALL_CERTIFICATE 0x99
 #define SRPC_GET_LAST_MESSAGE    0x9a
 #define SRPC_GET_CURRENT_PRICE   0x9b
@@ -110,6 +111,10 @@ extern "C"
 #define CLOSE_AUTH_NUM 0x2536
 
 #define Z_EXTADDR_LEN 8
+
+#define MT_NEW_DEVICE_FLAGS_NONE  0x00
+#define MT_NEW_DEVICE_FLAGS_FIRST 0x01
+#define MT_NEW_DEVICE_FLAGS_LAST  0x02
 
 typedef enum
 {
@@ -134,7 +139,7 @@ typedef struct
 
 //SRPC Interface functions
 void SRPC_Init(void);
-uint8_t RSPC_SendEpInfo(epInfo_t *epInfo);
+uint8_t RSPC_SendEpInfo(epInfoExtended_t *epInfoEx);
 
 void SRPC_CallBack_getStateRsp(uint8_t state, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 void SRPC_CallBack_getLevelRsp(uint8_t level, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);

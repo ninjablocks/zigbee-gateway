@@ -92,15 +92,30 @@ extern "C"
 // Endpoint information record entry
 typedef struct
 {
-  uint8_t  IEEEAddr[8];
+  uint8_t IEEEAddr[8];
   uint16_t nwkAddr;   // Network address
-  uint8_t  endpoint;   // Endpoint identifier
+  uint8_t endpoint;   // Endpoint identifier
   uint16_t profileID; // Profile identifier
   uint16_t deviceID;  // Device identifier
-  uint8_t  version;    // Version
-  char*    deviceName;
-  uint8_t  status;
+  uint8_t version;    // Version
+  char* deviceName;
+  uint8_t status;
+  uint8_t flags;
 } epInfo_t;
+
+typedef struct
+{
+	epInfo_t * epInfo;
+	uint16_t prevNwkAddr;	// Precious network address
+	uint8_t type;	// new / updated / old
+} epInfoExtended_t;
+
+#define EP_INFO_TYPE_EXISTING 0
+#define EP_INFO_TYPE_NEW 1
+#define EP_INFO_TYPE_UPDATED 2
+#define EP_INFO_TYPE_REMOVED 4
+
+
 
 // String Data Type
 typedef struct
@@ -173,7 +188,7 @@ typedef uint8_t (*zbSocZclPublishPriceIndCb_t)(uint8_t *zclPayload, uint8_t len)
 typedef struct
 {
   zbSocTlIndicationCb_t          pfnTlIndicationCb;      // TouchLink Indication callback
-  zbSocNewDevIndicationCb_t      pfnNewDevIndicationCb;  // New device Indication callback    
+  zbSocNewDevIndicationCb_t         pfnNewDevIndicationCb;  // New device Indication callback    
   zbSocZclGetStateCb_t           pfnZclGetStateCb;       // ZCL response callback for get State
   zbSocZclGetLevelCb_t           pfnZclGetLevelCb;     // ZCL response callback for get Level
   zbSocZclGetHueCb_t             pfnZclGetHueCb;         // ZCL response callback for get Hue
@@ -203,6 +218,14 @@ extern zllTimer TIMEOUT_TIMER;
 extern int serialPortFd;
 extern const char * BOOTLOADER_RESULT_STRINGS[];
 
+typedef struct 
+{
+	int fd;
+	timerCallback_t callback;
+}timerFDs_t;
+
+#define NUM_OF_TIMERS 2
+void zbSocGetTimerFds(timerFDs_t *fds);
 
 /********************************************************************/
 // ZigBee Soc API
@@ -211,7 +234,7 @@ extern const char * BOOTLOADER_RESULT_STRINGS[];
 int32_t zbSocOpen( char *devicePath );
 void zbSocRegisterCallbacks( zbSocCallbacks_t zbSocCallbacks);
 void zbSocClose( void );
-void zbSocProcessRpc(void);
+void zbSocProcessRpc (void);
 
 //ZigBee Control API's
 void zbSocTouchLink(void);
@@ -246,11 +269,8 @@ uint8_t zbSocSblInitiateImageDownload(char * filename, uint8_t enableProgressRep
 void zbSocFinishLoadingImage(void);
 //void zbSocTimeoutCallback(void);
 //void zbSocExecuteTimerCallback(zllTimer * timer);
-void zbSocDisableTimeout(zllTimer * timer);
-void zbSocEnableTimeout(zllTimer * timer, uint32_t milliseconds);
-uint8_t zbSocIsTimeoutEnabled(zllTimer * timer);
-uint8_t zbSocIsTimerExpired(zllTimer * timer);
-uint8_t zbSocHandleTimers(void);
+void zbSocDisableTimeout(int timer);
+void zbSocEnableTimeout(int timer, uint32_t milliseconds);
 void zbSocRemoveDevice(uint8_t ieeeAddr[]);
 void zbSocForceRun(void);
 

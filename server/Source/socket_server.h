@@ -63,7 +63,7 @@ typedef void (*socketServerCb_t)( int clientFd );
 /*
  * serverSocketInit - initialises the server.
  */      
-int32 socketSeverInit( uint32 port );
+int32 socketSeverInit( uint32_t port );
 
 /*
  * serverSocketConfig - initialises the server.
@@ -78,7 +78,7 @@ void socketSeverGetClientFds(int *fds, int maxFds);
 /* 
  * getClientFds - get clients fd's. 
  */
-uint32 socketSeverGetNumClients(void);
+uint32_t socketSeverGetNumClients(void);
 
 /*
  * socketSeverPoll - services the Socket events.
@@ -88,12 +88,12 @@ void socketSeverPoll(int clinetFd, int revent);
 /*
  * socketSeverSendAllclients - Send a buffer to all clients.
  */
-int32 socketSeverSendAllclients(uint8* buf, uint32 len);
+int32 socketSeverSendAllclients(uint8_t* buf, uint32_t len);
 
 /*
  * socketSeverSend - Send a buffer to a clients.
  */
-int32 socketSeverSend(uint8* buf, uint32 len, int32 fdClient);
+int32 socketSeverSend(uint8_t* buf, uint32_t len, int32 fdClient);
 
 
 /*

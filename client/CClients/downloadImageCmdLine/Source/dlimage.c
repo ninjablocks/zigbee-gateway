@@ -63,17 +63,10 @@ int keyFd;
 #define CONSOLEDEVICE "/dev/console"
 
 void socketClientZllCb( msgData_t *msg ); 
-uint8_t RPSC_ZLL_NewDevice(uint8_t *msg);
 static void srpcSendDownloadImage( char * filename, uint8_t enableProgressReporting );
 static void srpcSendAbortLoadingImage( void );
 
 typedef uint8_t (*rpcsProcessMsg_t)(uint8_t *msg);
-
-rpcsProcessMsg_t rpcsProcessZllIncoming[] =
-{
-  NULL,
-  RPSC_ZLL_NewDevice, 
-};
 
 const char * BOOTLOADER_RESULT_STRINGS[] = 
 {
@@ -140,7 +133,6 @@ int main(int argc, char *argv[])
       if( ((pollFds[0].revents) & POLLIN) )
       {  
 	  	srpcSendAbortLoadingImage();
-//		srpcSendDownloadImage(argv[1], 0);
 		sleep(1);
         //Any key ppress will exit
         socketClientClose();
@@ -184,11 +176,6 @@ void socketClientZllCb( msgData_t *msg )
   {
   	printf("Bootloader message: %s address 0x%08X\n", msg->pData[0] == 1 ? "HANDSHAKING" : msg->pData[0] == 2 ? "WRITING" : msg->pData[0] == 3 ? "READING" : "EXECUTING", BUILD_UINT32(msg->pData[1], msg->pData[2], msg->pData[3], msg->pData[4]));
   }
-  else
-  {
-    printf("Error: no processing function for CMD 0x%x\n", msg->cmdId); 
-  }
-      
 }
 
 static void srpcSendAbortLoadingImage( void )
@@ -221,44 +208,4 @@ static void srpcSendDownloadImage( char * filename, uint8_t enableProgressReport
   socketClientSendData (&srpcCmd);
     
   return; 
-}
-
-/*********************************************************************
- * @fn          RPSC_ZLL_NewDevice
- *
- * @brief       This function proccesses the NewDevice message from the ZLL Gateway.
- *
- * @param       pBuf - incomin messages
- *
- * @return      afStatus_t
- */
-uint8_t RPSC_ZLL_NewDevice(uint8_t *pMsg)
-{    
-  epInfo_t epInfo;
-  uint8_t devNameStrLen;
-  static int i=0;
-
-  epInfo.nwkAddr = BUILD_UINT16(pMsg[0], pMsg[1]);
-  pMsg+=2;
-
-  epInfo.endpoint = *pMsg++;
-  
-  epInfo.profileID = BUILD_UINT16(pMsg[0], pMsg[1]);
-  pMsg+=2;
-  
-  epInfo.deviceID = BUILD_UINT16(pMsg[0], pMsg[1]);
-  pMsg+=2;
-
-  epInfo.version = *pMsg++;
-  
-  //skip name for now
-  devNameStrLen = *pMsg;
-  pMsg += devNameStrLen + 1;
-
-  epInfo.status = *pMsg++;
-    
-  printf("RPSC_ZLL_NewDevice[%d]: %x:%x\n", i++, epInfo.nwkAddr, epInfo.endpoint);  
-    
-  
-  return 0;  
 }

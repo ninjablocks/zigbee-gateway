@@ -51,20 +51,63 @@
 #include <sys/socket.h>
 #include <poll.h>
 
-
 #include "socket_client.h"
 #include "interface_srpcserver.h"
 #include "hal_defs.h"
  
-int keyFd;
-
 #define CONSOLEDEVICE "/dev/console"
 
 void socketClientCb( msgData_t *msg ); 
 uint8_t SRPC_NewDevice(uint8_t *msg);
 static void srpcSendGetDevices( void );
 
-typedef uint8_t (*rpcsProcessMsg_t)(uint8_t *msg);
+typedef uint8_t (*srpcProcessMsg_t)(uint8_t *msg);
+
+typedef struct
+{
+  char * str;
+  uint16_t id;
+} device_id_strings_t;
+
+device_id_strings_t device_id_strings[] = 
+{
+  {"On/Off Switch",                        0x0000},        
+  {"Level Control Switch",                 0x0001},        
+  {"On/Off Output",                        0x0002},        
+  {"Level Controllable Output",            0x0003},        
+  {"Scene Selector",                       0x0004},        
+  {"Configuration Tool",                   0x0005},        
+  {"Remote Control",                       0x0006},        
+  {"Combined Interface",                   0x0007},        
+  {"Range Extender",                       0x0008},        
+  {"Mains Power Outlet",                   0x0009},        
+  {"Door Lock",                            0x000A},        
+  {"Door Lock Controller",                 0x000B},        
+  {"Simple Sensor",                        0x000C},        
+  {"On/Off Light",                         0x0100},        
+  {"Dimmable Light",                       0x0101},        
+  {"Color Dimmable Light",                 0x0102},        
+  {"On/Off Light Switch",                  0x0103},        
+  {"Dimmer Switch",                        0x0104},        
+  {"Color Dimmer Switch",                  0x0105},        
+  {"Light Sensor",                         0x0106},        
+  {"Occupancy Sensor",                     0x0107},        
+  {"Shade",                                0x0200},        
+  {"Shade Controller",                     0x0201},        
+  {"Window Covering Device",               0x0202},        
+  {"Window Covering Controller",           0x0203},        
+  {"Heating/Cooling Unit",                 0x0300},        
+  {"Thermostat",                           0x0301},        
+  {"Temperature Sensor",                   0x0302},        
+  {"Pump",                                 0x0303},        
+  {"Pump Controller",                      0x0304},        
+  {"Pressure Sensor",                      0x0305},        
+  {"Flow Sensor",                          0x0306},        
+  {"IAS Control and Indicating Equipment", 0x0400},        
+  {"IAS Ancillary Control Equipment",      0x0401},        
+  {"IAS Zone",                             0x0402},        
+  {"IAS Warning Device",                   0x0403},        
+};
 
 srpcProcessMsg_t srpcProcessIncoming[] =
 {
@@ -72,12 +115,27 @@ srpcProcessMsg_t srpcProcessIncoming[] =
   SRPC_NewDevice, 
 };
 
+int keyFd;
 
+/*********************************************************************
+ * @fn          main
+ *
+ * @brief      
+ *
+ * @param     
+ *
+ * @return     
+ */
 int main(int argc, char *argv[])
 {
   int ret;
       
   socketClientInit("127.0.0.1:11235", socketClientCb);
+      
+
+  printf("--- List of devices ------------------------------------------------------------------------------------------------------------\n");
+  printf("type     addr   ep   profID devID  IEEEAddr                flgs prvadr deviceIdString                       deviceGivenName     \n");
+  printf("-------- ------ ---- ------ ------ ----------------------- ---- ------ ------------------------------------ --------------------\n");
   
   //send get devices command
   srpcSendGetDevices();
@@ -107,23 +165,37 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-//Process the message from SE-Interface
-void socketClienCb( msgData_t *msg )
+
+/*********************************************************************
+ * @fn          socketClientCb
+ *
+ * @brief      
+ *
+ * @param     
+ *
+ * @return     
+ */
+void socketClientCb( msgData_t *msg )
 {
-  rpcsProcessMsg_t func;
+  srpcProcessMsg_t func;
 
   func = srpcProcessIncoming[(msg->cmdId)];
   if (func)
   {
     (*func)(msg->pData);
-  }
-  else
-  {
-    printf("Error: no processing function for CMD 0x%x\n", msg->cmdId); 
-  }
-      
+  }      
 }
 
+
+/*********************************************************************
+ * @fn          srpcSendGetDevices
+ *
+ * @brief      
+ *
+ * @param     
+ *
+ * @return     
+ */
 static void srpcSendGetDevices( void )
 { 
   msgData_t srpcCmd;
@@ -136,10 +208,38 @@ static void srpcSendGetDevices( void )
   return; 
 }
 
+
+/*********************************************************************
+ * @fn          get_device_id_string
+ *
+ * @brief      
+ *
+ * @param     
+ *
+ * @return     
+ */
+char * get_device_id_string(uint16_t id)
+{
+	char * device_id_string = "Unknown device";
+	int x;
+
+	for (x = 0; x < (sizeof(device_id_strings) / sizeof(device_id_strings[0])); x++)
+	{
+		if (id == device_id_strings[x].id)
+		{
+			device_id_string = device_id_strings[x].str;
+			break;
+		}
+	}
+
+	return device_id_string;
+}
+
+
 /*********************************************************************
  * @fn          SRPC_NewDevice
  *
- * @brief       This function proccesses the NewDevice message from the zbGateway.
+ * @brief       This function proccesses the NewDevice message from the ZLL Gateway.
  *
  * @param       pBuf - incomin messages
  *
@@ -148,43 +248,75 @@ static void srpcSendGetDevices( void )
 uint8_t SRPC_NewDevice(uint8_t *pMsg)
 {    
   epInfo_t epInfo;
+  epInfoExtended_t epInfoEx;
   uint8_t devNameStrLen;
-  static int i=0;
-  uint8_t* pTmpMsg; 
-   
-  printf("SRPC_NewDevice++\n");  
-  
-  pTmpMsg = pMsg;
-  
-  epInfo.nwkAddr = BUILD_UINT16(pTmpMsg[0], pTmpMsg[1]);
-  pTmpMsg+=2;
+  int i;
+  char * devNameStr;
 
-  epInfo.endpoint = *pTmpMsg++;
-  
-  epInfo.profileID = BUILD_UINT16(pTmpMsg[0], pTmpMsg[1]);
-  pTmpMsg+=2;
-  
-  epInfo.deviceID = BUILD_UINT16(pTmpMsg[0], pTmpMsg[1]);
-  pTmpMsg+=2;
+  epInfoEx.epInfo = &epInfo;
 
-  epInfo.version = *pTmpMsg++;
+  epInfo.nwkAddr = BUILD_UINT16(pMsg[0], pMsg[1]);
+  pMsg+=2;
+
+  epInfo.endpoint = *pMsg++;
+  
+  epInfo.profileID = BUILD_UINT16(pMsg[0], pMsg[1]);
+  pMsg+=2;
+  
+  epInfo.deviceID = BUILD_UINT16(pMsg[0], pMsg[1]);
+  pMsg+=2;
+
+  epInfo.version = *pMsg++;
   
   //skip name for now
-  devNameStrLen = *pTmpMsg;
-  pTmpMsg += devNameStrLen + 1;
+  devNameStrLen = *pMsg++;
+  devNameStr = (char *)pMsg;
+  pMsg += devNameStrLen;
 
-  epInfo.status = *pTmpMsg++;
+  epInfo.status = *pMsg++;
+
+    for(i = 0; i < 8; i++)
+    {
+      //printf("srpcParseEpInfp: IEEEAddr[%d] = %x\n", i, epInfo->IEEEAddr[i]);
+      epInfo.IEEEAddr[i] = *pMsg++;
+    }
+	epInfoEx.type = *pMsg++;
+	epInfoEx.prevNwkAddr = BUILD_UINT16(pMsg[0], pMsg[1]);
+	pMsg+=2;
+	epInfo.flags = *pMsg++;
+   
   
-  epInfo.IEEEAddr[0] = *pTmpMsg++;
-  epInfo.IEEEAddr[1] = *pTmpMsg++;
-  epInfo.IEEEAddr[2] = *pTmpMsg++;
-  epInfo.IEEEAddr[3] = *pTmpMsg++;
-  epInfo.IEEEAddr[4] = *pTmpMsg++;
-  epInfo.IEEEAddr[5] = *pTmpMsg++;
-  epInfo.IEEEAddr[6] = *pTmpMsg++;
-  epInfo.IEEEAddr[7] = *pTmpMsg++;
-    
-  printf("SRPC_NewDevice[%d]: %x:%x\n", i++, epInfo.nwkAddr, epInfo.endpoint);  
-      
+  printf("%-8s", 
+  	epInfoEx.type == EP_INFO_TYPE_EXISTING ? "EXISTING" : 
+  	epInfoEx.type == EP_INFO_TYPE_NEW ? "NEW" : 
+  	epInfoEx.type == EP_INFO_TYPE_REMOVED ? "REMOVED" : 
+  	"UPDATED"
+  );
+  
+  printf(" 0x%04X 0x%02X 0x%04X 0x%04X ",
+    epInfo.nwkAddr,
+    epInfo.endpoint,
+    epInfo.profileID,
+    epInfo.deviceID
+    );  
+
+  for(i = 0; i < 8; i++)
+  {
+	printf("%s%02X", i > 0 ? ":" : "", epInfo.IEEEAddr[7-i]);
+  }
+  
+  printf(" 0x%02X ", epInfo.flags);
+  
+  if (epInfoEx.type == EP_INFO_TYPE_UPDATED)
+  {
+	  printf("0x%04X", epInfoEx.prevNwkAddr);
+  }
+  else
+  {
+  	printf("------");
+  }
+
+  printf(" %-*s \"%.*s\"\n", 36, get_device_id_string(epInfo.deviceID), devNameStrLen, devNameStr);
+  
   return 0;  
 }

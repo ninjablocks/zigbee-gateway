@@ -49,11 +49,20 @@ extern "C"
  */
 #include <stdint.h>
 
+typedef struct groupMembersRecord_s
+{
+  struct groupMembersRecord_s * next;
+  uint16_t nwkAddr;
+  uint8_t endpoint;
+}groupMembersRecord_t;
+ 
 typedef struct
 {
-  uint16_t groupId;
-  char *groupNameStr;
-}groupListItem_t;
+  char *name;
+  groupMembersRecord_t *members;
+  void   *next;
+  uint16_t id;
+}groupRecord_t;
 
 /*
  * groupListAddGroup - create a group and add a rec fto the list.
@@ -63,17 +72,17 @@ uint16_t groupListAddGroup( char *groupNameStr );
 /*
  * groupListAddDeviceToGroup - Add a device to a group.
  */
-void groupListAddDeviceToGroup( char *groupNameStr, uint16_t nwkAddr );
+	uint16_t groupListAddDeviceToGroup( char *groupNameStr, uint16_t nwkAddr, uint8_t endpoint );
 
 /*
  * groupListGetNextGroup - Return the next group in the list..
  */
-groupListItem_t* groupListGetNextGroup( char *groupNameStr );
+groupRecord_t * groupListGetNextGroup(uint32_t *context);
 
 /*
- * groupListRestorGroups - Restore Group List from file.
+ * groupListInitDatabase - Restore Group List from file.
  */
-void groupListRestorGroups( void );
+void groupListInitDatabase( char * dbFilename );
 
 #ifdef __cplusplus
 }

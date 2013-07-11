@@ -45,484 +45,237 @@
 #include <unistd.h>
 
 #include "interface_grouplist.h"
+#include "hal_types.h"
+#include "SimpleDBTxt.h"
+
+ 
+static db_descriptor * db;
 
 /*********************************************************************
  * TYPEDEFS
  */
-typedef struct
-{
-  void   *next;
-  uint16_t groupMemberNwkAddr;
-}groupMembersRecord_t;
- 
-typedef struct
-{
-  uint16_t groupId;
-  char *groupNameStr;
-  groupMembersRecord_t *groupMembers;
-  void   *next;
-}groupRecord_t;
- 
-groupRecord_t *groupRecordHead = NULL;
-
-/*********************************************************************
- * LOCAL FUNCTION PROTOTYPES
- */ 
-static groupRecord_t* createGroupRec( char *groupNameStr, uint16_t groupId, uint8_t storeToFile );
-static groupRecord_t* findGroupRec(char *groupNameStr );
-static uint16_t getFreeGroupId(void);
-static int addGroupMemberToGroup( char *groupNameStr, uint16_t nwkAddr );
-static void writeGroupListToFile( groupRecord_t *device );
-static void writeGroupMemberToFile( char *groupNameStr, uint16_t nwkAddr  );
-static void readGroupListFromFile( void );
-
-/*********************************************************************
- * FUNCTIONS
- *********************************************************************/
-
-/*********************************************************************
- * @fn      createGroupRec
- *
- * @brief   create a group and rec to the list.
- *
- * @return  none
- */
-static groupRecord_t* createGroupRec( char *groupNameStr, uint16_t groupId, uint8_t storeToFile )
-{  
-  //printf("createGroupRec++\n");
   
-  //does it already exist  
-  if( findGroupRec( groupNameStr ) )
+void groupListInitDatabase( char * dbFilename )
   {
-    //printf("createGroupRec: Device already exists\n");
-    return 0;
+ db = sdb_init_db(dbFilename, sdbtGetRecordSize, sdbtCheckDeleted, sdbtCheckIgnored, sdbtMarkDeleted, (consolidation_processing_f)sdbtErrorComment, SDB_TYPE_TEXT, 0);
+ sdb_consolidate_db(&db);
   }
       
-  groupRecord_t *newGroup = malloc( sizeof( groupRecord_t ) );
   
-  newGroup->groupNameStr = malloc(groupNameStr[0]+1);
-  memcpy( newGroup->groupNameStr, groupNameStr, groupNameStr[0]+1);
-  
-  //set groupId
-  newGroup->groupId = groupId; 
-  //NULL the pointers
-  newGroup->groupMembers = NULL;
-  newGroup->next = NULL;
-    
-  //store the record
-  if(groupRecordHead)
+static char * groupListComposeRecord(groupRecord_t *group, char * record)
   {
-    groupRecord_t *srchRec;
+	groupMembersRecord_t *groupMembers;
 
-    //find the end of the list and add the record
-    srchRec = groupRecordHead;
-    // Stop at the last record
-    while ( srchRec->next )
-      srchRec = srchRec->next;
+	sprintf(record, "        0x%04X , \"%s\"", //leave a space at the beginning to mark this record as deleted if needed later, or as bad format (can happen if edited manually). Another space to write the reason of bad format. 
+		group->id,
+		group->name ? group->name : "");
 
-    // Add to the list
-    srchRec->next = newGroup; 
-  }
-  else
-    groupRecordHead = newGroup;
+	groupMembers = group->members;
       
-  if(storeToFile)
+	while (groupMembers != NULL)
   {
-    writeGroupListToFile(newGroup);
+		sprintf(record + strlen(record), " , 0x%04X , 0x%02X" , groupMembers->nwkAddr, groupMembers->endpoint);
+		groupMembers = groupMembers->next;
   }
   
-  //printf("createGroupRec--\n");
-  return newGroup;
+	return record;
 }
 
-/*********************************************************************
- * @fn      addGroupMemberToGroup
- *
- * @brief   add a device to an existing groupRecordHead.
- *
- * @return  none
- */
-static int addGroupMemberToGroup( char *groupNameStr, uint16_t nwkAddr )
-{
-  groupRecord_t* group;
-  
-  group = findGroupRec( groupNameStr );
-  
-  if(group != NULL)
-  {
-    groupMembersRecord_t *srchGroupMember = group->groupMembers;
+#define MAX_SUPPORTED_GROUP_NAME_LENGTH 32
+#define MAX_SUPPORTED_GROUP_MEMBERS 20
 
-    //find the end of the list and check device not already in the list
-    while ( srchGroupMember )
-    {
-      if(srchGroupMember->groupMemberNwkAddr == nwkAddr)
+static groupRecord_t * groupListParseRecord(char * record)
+{
+	char * pBuf = record + 1; //+1 is to ignore the 'for deletion' mark that may just be added to this record.
+	static groupRecord_t group;
+	static char groupName[MAX_SUPPORTED_GROUP_NAME_LENGTH + 1];
+	static groupMembersRecord_t member[MAX_SUPPORTED_GROUP_MEMBERS];
+	groupMembersRecord_t ** nextMemberPtr;
+	parsingResult_t parsingResult = {SDB_TXT_PARSER_RESULT_OK, 0};
+	int i;
+  
+	if (record == NULL)
+	{
+		return NULL;
+	}
+  
+	sdb_txt_parser_get_numeric_field(&pBuf, (uint8_t *)&group.id, 2, FALSE, &parsingResult);
+	sdb_txt_parser_get_quoted_string(&pBuf, groupName, MAX_SUPPORTED_GROUP_NAME_LENGTH, &parsingResult);
+	nextMemberPtr = &group.members;
+	for (i = 0; (parsingResult.code == SDB_TXT_PARSER_RESULT_OK) && (i < MAX_SUPPORTED_GROUP_MEMBERS); i++)
+  {
+		*nextMemberPtr = &(member[i]);
+		sdb_txt_parser_get_numeric_field(&pBuf, (uint8_t *)&(member[i].nwkAddr), 2, FALSE, &parsingResult);
+		sdb_txt_parser_get_numeric_field(&pBuf, (uint8_t *)&(member[i].endpoint), 1, FALSE, &parsingResult);
+		nextMemberPtr = &(member[i].next);
+	}
+	*nextMemberPtr = NULL;
+
+	if ((parsingResult.code != SDB_TXT_PARSER_RESULT_OK) && (parsingResult.code != SDB_TXT_PARSER_RESULT_REACHED_END_OF_RECORD))
       {
-        //device already in group
-        return 0;
+		sdbtMarkError( db, record, &parsingResult);
+		return NULL;
       }
        
-      if(srchGroupMember->next == NULL)
+	if (strlen(groupName) > 0)
       {
-        groupMembersRecord_t*  newGroupMembersRecord;
-        //we at the end of the list store the groupMember
-        newGroupMembersRecord = malloc(sizeof(groupMembersRecord_t));
-        newGroupMembersRecord->groupMemberNwkAddr = nwkAddr;
-        srchGroupMember->next = newGroupMembersRecord;
-        
-        writeGroupMemberToFile(groupNameStr, nwkAddr);
-        
-        return 0;
+		group.name = groupName;
       }
       else
       {
-        srchGroupMember = srchGroupMember->next;            
-      }
+		group.name = NULL;
     }    
+
+	return &group;
   }
     
-  return 0;
-}
 
-/*********************************************************************
- * @fn      findGroupRec
- *
- * @brief   find a record in the list.
- *
- *
- * @return  none
- */
-static groupRecord_t* findGroupRec( char *groupNameStr )
+static int groupListCheckKeyName(char * record, char * key)
 {
-  groupRecord_t *srchRec = groupRecordHead;
+	groupRecord_t * group;
+	int result = SDB_CHECK_KEY_NOT_EQUAL;
 
-  //printf("findGroupRec++\n");
-  // find record
-  while ( (srchRec != NULL) ) 
+	group = groupListParseRecord(record);
+	if (group == NULL)
   {
-      //printf("findGroupRec: srchRec:%x\n", (uint32_t) srchRec);
-      //printf("findGroupRec: srchRec->groupNameStr:%x\n", (uint32_t) srchRec->groupNameStr);
-      //printf("findGroupRec: groupNameStr:%x\n", (uint32_t) groupNameStr);
-      if(srchRec->groupNameStr[0] == groupNameStr[0])
-      {
-        if(strncmp(srchRec->groupNameStr, groupNameStr, srchRec->groupNameStr[0]) == 0)
+		return SDB_CHECK_KEY_ERROR;
+	}
+
+	if (strcmp(group->name, key) == 0)
         {
-          //we found the group
-          //printf("findGroupRec: group found\n");
-          break;
-        }
+		result = SDB_CHECK_KEY_EQUAL;
       }
-      srchRec = srchRec->next;  
-  }
-  
-  //printf("findGroupRec--\n");
    
-  return srchRec;
+	return result;
 }
 
-/*********************************************************************
- * @fn      getFreeGroupId
- *
- * @brief   Finds the next (hieghst) free group ID.
- *
- *
- * @return  none
- */
-static uint16_t getFreeGroupId( void )
+static int groupListCheckKeyId(char * record, uint16_t * key)
 {
-  groupRecord_t *srchRec = groupRecordHead;
-  uint16_t heighestGroupIdx = 0;
+	groupRecord_t * group;
+	int result = SDB_CHECK_KEY_NOT_EQUAL;
   
-  //printf("findGroupRec++\n");
-  
-  // find record
-  while ( srchRec ) 
+	group = groupListParseRecord(record);
+	if (group == NULL)
   {
-    if(heighestGroupIdx < srchRec->groupId)
-    {
-       heighestGroupIdx = srchRec->groupId;
+		return SDB_CHECK_KEY_ERROR;
     }
        
-    srchRec = srchRec->next;  
+	if (group->id == *key)
+	{
+		result = SDB_CHECK_KEY_EQUAL;
   }
   
-  //printf("findGroupRec--\n");
-   
-  return heighestGroupIdx + 1;
+	return result;
 }
 
-/***************************************************************************************************
- * @fn      writeGroupListToFile - store group list.
- *
- * @brief   
- * @param   
- *
- * @return 
- ***************************************************************************************************/
-static void writeGroupListToFile( groupRecord_t *group )
+groupRecord_t * groupListGetGroupByName( char * groupName )
 {
-  FILE *fpGRoupFile;
-  
-  //printf("writeGroupListToFile++\n");
-  
-  fpGRoupFile = fopen("grouplistfile.dat", "a+b");
+	char * rec;
 
-  if(fpGRoupFile)
+	rec = SDB_GET_UNIQUE_RECORD(db, groupName, (check_key_f)groupListCheckKeyName);
+	if (rec == NULL)
   {
-    //printf("writeGroupListToFile: opened file\n");
+		return NULL;
+	}
     
-    //printf("writeGroupListToFile: Store group: groupId %x, groupNameLen %x, groupName %s\n", group->groupId, (group->groupNameStr[0] + 1), group->groupNameStr);
-    //Store group
-    fwrite((const void *) &(group->groupId), 2, 1, fpGRoupFile);
-    fwrite((const void *) &(group->groupNameStr[0]), 1, 1, fpGRoupFile);    
-    fwrite((const void *) &(group->groupNameStr[1]), (group->groupNameStr[0]), 1, fpGRoupFile);
-    
-    //write group delimeter
-    fwrite((const void *) ";", 1, 1, fpGRoupFile);
-    
-    fflush(fpGRoupFile);
-    fclose(fpGRoupFile); 
-  }
+	return groupListParseRecord(rec);
 }
+    
 
-/***************************************************************************************************
- * @fn      writeGroupMemberToFile - store group list.
- *
- * @brief   
- * @param   
- *
- * @return 
- ***************************************************************************************************/
-static void writeGroupMemberToFile( char *groupNameStr, uint16_t nwkAddr  )
+uint16_t groupListGetUnusedGroupId(void)
 {
-  FILE *fpGroupMemberFile;
-  uint32_t fileSize, groupStrIdx=0;
-  char *fileBuf, *groupStr, *groupStrEnd;
+	static uint16_t lastUsedGroupId = 0;
   
-  //printf("writeGroupMemberToFile++\n");
+	lastUsedGroupId++;
   
-  fpGroupMemberFile = fopen("grouplistfile.dat", "a+b");
-  
-  if(fpGroupMemberFile)
+	while (SDB_GET_UNIQUE_RECORD(db, &lastUsedGroupId, (check_key_f)groupListCheckKeyId) != NULL)
   {
-    //read the file into a buffer  
-    fseek(fpGroupMemberFile, 0, SEEK_END);
-    fileSize = ftell(fpGroupMemberFile);
-    rewind(fpGroupMemberFile);  
-    fileBuf = (char*) calloc(sizeof(char), fileSize + 20);  
-    fread(fileBuf, 1, fileSize, fpGroupMemberFile);
-
-    //find the group
-    groupStr = strstr(groupNameStr, fileBuf);
-    //find group delimiter
-    groupStrEnd = strchr(groupStr, ';');
-    //get byte offset in fileSize
-    groupStrIdx += (groupStr - groupStrEnd);
-    //back up to before the ;    
-    groupStrIdx =- 1;
-        
-    //set the file pointer to the 
-    fseek(fpGroupMemberFile, SEEK_SET, groupStrIdx);
-
-    //printf("writeGroupMemberToFile: Store group member\n");
-    //write member delimeter
-    fwrite((const void *) ":", 1, 1, fpGroupMemberFile);
-    //write the member nwk addr
-    fwrite((const void *) &(nwkAddr), sizeof(uint16_t), 1, fpGroupMemberFile);
+		lastUsedGroupId++;
   }
     
-  fflush(fpGroupMemberFile);
-  fclose(fpGroupMemberFile);
-  free(fileBuf);   
+	return lastUsedGroupId;
 } 
 
-/***************************************************************************************************
- * @fn      readGroupListFromFile - restore the group list.
- *
- * @brief   
- *
- * @return 
- ***************************************************************************************************/
-static void readGroupListFromFile( void )
-{
-  FILE *fpGRoupFile;
-  groupRecord_t *group;
-  uint32_t fileSize, groupStrIdx=0, bytesRead=0;
-  char *fileBuf;
-    
-  //printf("readGroupListFromFile++\n");
-  fpGRoupFile = fopen("grouplistfile.dat", "a+b");
-
-  if(fpGRoupFile)
-  {    
-    //printf("readGroupListFromFile: file opened\n");
-
-    //read the file into a buffer  
-    fseek(fpGRoupFile, 0, SEEK_END);
-    fileSize = ftell(fpGRoupFile);
-    rewind(fpGRoupFile);  
-    fileBuf = (char*) calloc(sizeof(char), fileSize);  
-    bytesRead = fread(fileBuf, 1, fileSize, fpGRoupFile);
-    
-    //printf("readGroupListFromFile: read file [%d:%d]\n", fileSize, bytesRead);
-    
-    if(fileBuf)
-    {
-      //printf("readGroupListFromFile: processing filebuf. groupStrIdx: %x, (groupStrIdx + fileBuf[groupStrIdx + 2] + 2) : %x \n", groupStrIdx, (groupStrIdx + fileBuf[groupStrIdx + 2] + 2));
-      
-      //read group if there is a full group to read (uint16_t groupId + string length byte + string length (stored in byte before string) )
-      while((groupStrIdx + 2 + fileBuf[groupStrIdx + 2] + 1) < fileSize)
-      {            
-        //printf("readGroupListFromFile: group read for group ID %x, str len %d\n", (uint16_t) fileBuf[groupStrIdx], fileBuf[(groupStrIdx + 2)]);
-        
-        group = createGroupRec(&(fileBuf[(groupStrIdx + 2)]), (uint16_t) fileBuf[groupStrIdx], 0);              
-        
-        //printf("readGroupListFromFile: group ID %x read\n", fileBuf[groupStrIdx]);
-        
-        //index past GroupId + groupNameStr + groupNameStrLen + ';'
-        groupStrIdx += 2 + fileBuf[groupStrIdx + 2] + 1 + 1;
-      }
-      
-      //printf("readGroupListFromFile: processed filebuf\n");      
-      
-      free(fileBuf);
-    }
-    
-    fflush(fpGRoupFile);
-    fclose(fpGRoupFile);    
-  }
-  
-  //printf("readGroupListFromFile--\n");
-}
-
-/*********************************************************************
- * @fn      devListRestorDevices
- *
- * @brief   create a device list from file.
- *
- * @param   none
- *
- * @return  none
- */
-void groupListRestorGroups( void )
-{
-  //printf("groupListRestorGroups++\n");
-  
-  if( groupRecordHead == NULL)
-  {
-    readGroupListFromFile();
-  }
-  //else do what, should we delete the list and recreate from the file?
-  
-  //printf("groupListRestorGroups--\n");
-}
-
-/*********************************************************************
- * @fn      devListDescoverDevice
- *
- * @brief   Descovers a GRoup.
- *
- * @param   table
- * @param   rmTimer
- *
- * @return  none
- */
-void groupListDescoverGroup( char *groupNameStr )
-{  
-  //printf("groupListDescoverDevice++\n");
-  
-  //Need to BCast a get group membership
-  
-  //printf("groupListDescoverDevice--\n");
-}
-
-/*********************************************************************
- * @fn      groupListGetNextGroup
- *
- * @brief   Return the next group in the list.
- *
- * @param   groupNameStr - if NULL it will return head of the list
- *
- * @return  groupListItem_t, return next group from groupNameStr supplied or 
- *          NULL if at end of the list
- */
-groupListItem_t* groupListGetNextGroup( char *groupNameStr )
-{  
-  groupRecord_t *srchRec = groupRecordHead;
-  groupListItem_t *groupItem = NULL;
-  
-  //printf("groupListGetNextGroup++\n");
-  
-  if(groupNameStr != NULL)
-  {
-    //printf("groupListGetNextGroup: groupNameStr != NULL\n");
-    
-    //Find the record for group
-    srchRec = findGroupRec( groupNameStr );
-    //printf("groupListGetNextGroup: findGroupRec %x \n", (uint32_t) srchRec);
-    //get the next record (may be NULL if at end of list)
-    srchRec = srchRec->next;
-    //printf("groupListGetNextGroup: findGroupRec next  %x \n", (uint32_t) srchRec);
-    //Store the groupItem
-    if(srchRec)
-    {
-      //printf("groupListGetNextGroup: storing groupItem\n");
-      groupItem = malloc(sizeof(groupListItem_t));
-      if(groupItem)
-      {
-        groupItem->groupId = srchRec->groupId;
-        groupItem->groupNameStr = malloc(srchRec->groupNameStr[0] + 1);
-        if(groupItem->groupNameStr)
-        {
-          strncpy(groupItem->groupNameStr, srchRec->groupNameStr, (srchRec->groupNameStr[0] + 1));
-        }
-      }
-    }
-        
-  }
-  else if(groupRecordHead)
-  {
-    //else return the head of revord
-    groupItem = malloc(sizeof(groupListItem_t));
-    if(groupItem)
-    {
-      groupItem->groupId = groupRecordHead->groupId;
-      groupItem->groupNameStr = malloc(groupRecordHead->groupNameStr[0] + 1);
-      if(groupItem->groupNameStr)
-      {
-        strncpy(groupItem->groupNameStr, groupRecordHead->groupNameStr, (groupRecordHead->groupNameStr[0] + 1));
-      }
-    }
-  }
-  
-  //printf("groupListGetNextGroup--\n");
-  
-  return (groupItem);
-}
-
-/*********************************************************************
- * @fn      groupListAddGroup
- *
- * @brief   add a device to the group list.
- *
- * @return  none
- */
 uint16_t groupListAddGroup( char *groupNameStr )
+  {    
+  groupRecord_t *exsistingGroup;
+  groupRecord_t newGroup;
+  char rec[MAX_SUPPORTED_RECORD_SIZE];
+
+  //printf("groupListAddGroup++\n");
+    
+  exsistingGroup = groupListGetGroupByName( groupNameStr );
+    
+  if( exsistingGroup != NULL)
+    {
+	return exsistingGroup->id;
+  }
+      
+  newGroup.id = groupListGetUnusedGroupId();
+  newGroup.name = groupNameStr;
+  newGroup.members = NULL;
+        
+  groupListComposeRecord(&newGroup, rec);
+        
+  sdb_add_record(db, rec);
+        
+  //printf("groupListAddGroup--\n");
+      
+  return newGroup.id;
+    }
+    
+groupRecord_t * groupListRemoveGroupByName( char * groupName )
+{
+	return groupListParseRecord(sdb_delete_record(db, groupName , (check_key_f)groupListCheckKeyName));
+  }
+  
+
+uint16_t groupListAddDeviceToGroup( char *groupNameStr, uint16_t nwkAddr, uint8_t endpoint )
 {
   groupRecord_t *group;
+  groupRecord_t newGroup;
+  char rec[MAX_SUPPORTED_RECORD_SIZE];
+  groupMembersRecord_t ** nextMemberPtr;
+  groupMembersRecord_t newMember;
+  bool memberExists = FALSE;
   uint16_t groupId;
   
   //printf("groupListAddGroup++\n");
   
-  group = findGroupRec( groupNameStr );
-  
+  group = groupListGetGroupByName( groupNameStr );
+
   if( group == NULL)
-  {     
-    groupId = getFreeGroupId();
-    createGroupRec( groupNameStr, groupId, 1);
-  }
-  else
+{  
+	group = &newGroup;
+	group->id = groupListGetUnusedGroupId();
+	group->name = groupNameStr;
+	group->members = NULL;
+}
+
+  groupId = group->id;
+  
+  nextMemberPtr = &(group->members);
+  while ((*nextMemberPtr != NULL) && (!memberExists))
   {
-    groupId = group->groupId;
+  	if (((*nextMemberPtr)->nwkAddr == nwkAddr) && ((*nextMemberPtr)->endpoint == endpoint))
+    {
+		memberExists = TRUE;
+  	}
+	else
+      {
+  		nextMemberPtr = &((*nextMemberPtr)->next);
+      }
+    }
+        
+  if (!memberExists)
+      {
+	  *nextMemberPtr = &newMember;
+	  newMember.nwkAddr = nwkAddr;
+	  newMember.endpoint = endpoint;
+	  newMember.next = NULL;
+	  groupListComposeRecord(group, rec);
+	  groupListRemoveGroupByName( groupNameStr );
+	  sdb_add_record(db, rec);
   }
   
   //printf("groupListAddGroup--\n");
@@ -530,31 +283,24 @@ uint16_t groupListAddGroup( char *groupNameStr )
   return groupId;
 }
 
-/*********************************************************************
- * @fn      groupListAddDeviceToGroup
- *
- * @brief   create a group and add a rec to the list.
- *
- * @param   table
- * @param   rmTimer
- *
- * @return  none
- */
-void groupListAddDeviceToGroup( char *groupNameStr, uint16_t nwkAddr )
-{  
-  groupRecord_t* group;
+groupRecord_t * groupListGetNextGroup(uint32_t *context)
+{
+	char * rec;
+  groupRecord_t *group;
   
-  //printf("groupListAddDeviceToGroup++\n");
+	do
+	{
+		rec = SDB_GET_NEXT_RECORD(db,context);
   
-  group = findGroupRec( groupNameStr );
-  
-  if( group == NULL)
-  {     
-    createGroupRec( groupNameStr, getFreeGroupId(), 1 );
-  }
-  
-  if(group)
+		if (rec == NULL)
   {
-    addGroupMemberToGroup(groupNameStr, nwkAddr);
+			return NULL;
   }
+  
+		group = groupListParseRecord(rec);
+	} while (group == NULL); //in case of a bad-format record - skip it and read the next one
+  
+	return group;
 }
+
+  

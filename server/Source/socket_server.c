@@ -63,9 +63,9 @@
 //todo: use a callback instead.
 void SRPC_killLoadingImage(void);
 extern uint16_t SocketBootloadingState;
-extern uint32 bootloader_initiator_clientFd;
+extern uint32_t bootloader_initiator_clientFd;
 
- 
+
 /*********************************************************************
  * TYPEDEFS
  */ 
@@ -209,7 +209,7 @@ void deleteSocketRec( int rmSocketFd )
  *
  * @return  Status
  */      
-int32 socketSeverInit( uint32 port )
+int32 socketSeverInit( uint32_t port )
 {
   struct sockaddr_in serv_addr;
   int stat, tr=1;
@@ -282,7 +282,7 @@ int32 serverSocketConfig(socketServerCb_t rxCb, socketServerCb_t connectCb)
  */
 void socketSeverGetClientFds(int *fds, int maxFds)
 {  
-  uint32 recordCnt=0;
+  uint32_t recordCnt=0;
   socketRecord_t *srchRec;
 
   // Head of the timer list
@@ -309,9 +309,9 @@ void socketSeverGetClientFds(int *fds, int maxFds)
  *
  * @return  list of Timerfd's
  */
-uint32 socketSeverGetNumClients(void)
+uint32_t socketSeverGetNumClients(void)
 {  
-  uint32 recordCnt=0;
+  uint32_t recordCnt=0;
   socketRecord_t *srchRec;
   
   //printf("socketSeverGetNumClients++\n", recordCnt);
@@ -407,7 +407,7 @@ void socketSeverPoll(int clientFd, int revent)
  *
  * @return  Status
  */
-int32 socketSeverSend(uint8* buf, uint32 len, int32 fdClient)
+int32 socketSeverSend(uint8* buf, uint32_t len, int32 fdClient)
 { 
   int32 rtn;
 
@@ -436,7 +436,7 @@ int32 socketSeverSend(uint8* buf, uint32 len, int32 fdClient)
  *
  * @return  Status
  */
-int32 socketSeverSendAllclients(uint8* buf, uint32 len)
+int32 socketSeverSendAllclients(uint8* buf, uint32_t len)
 { 
   int rtn;
   socketRecord_t *srchRec;
@@ -447,7 +447,7 @@ int32 socketSeverSendAllclients(uint8* buf, uint32 len)
   // Stop when at the end or max is reached
   while ( srchRec )
   { 
-    //printf("SRPC_Send: client %d\n", cnt++);
+//    printf("SRPC_Send: client %d\n", cnt++);
     rtn = write(srchRec->socketFd, buf, len);
     if (rtn < 0) 
     {

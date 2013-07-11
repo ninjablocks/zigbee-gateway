@@ -296,7 +296,7 @@ static void readSceneListFromFile( void )
 }
 
 /*********************************************************************
- * @fn      devListRestorDevices
+ * @fn      devListInitDatabase
  *
  * @brief   create a device list from file.
  *

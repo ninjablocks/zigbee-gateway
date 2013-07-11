@@ -47,618 +47,247 @@
 #include "interface_srpcserver.h"
 #include "interface_devicelist.h"
 
+#include "hal_types.h"
+#include "SimpleDBTxt.h"
+
 /*********************************************************************
- * DEFINES
+ * LOCAL VARIABLES
  */
+
+static db_descriptor * db;
 
 
 /*********************************************************************
  * TYPEDEFS
  */
  
-typedef struct
-{
-  void   *next;
-  epInfo_t epInfo;  
-}deviceRecord_t;
-
-deviceRecord_t *deviceRecordHead = NULL;
-
 /*********************************************************************
  * LOCAL FUNCTION PROTOTYPES
  */ 
-static deviceRecord_t* createDeviceRec( epInfo_t epInfo );
-static deviceRecord_t* findDeviceRec( uint16_t nwkAddr, uint8_t endpoint);
-static char* findDeviceInFileString( uint16_t nwkAddr, uint8_t endpoint, char* fileBuf, uint32_t bufLen );
-static void removeDeviceFromFile( uint16_t nwkAddr, uint8_t endpoint );
-static void writeDeviceToFile( deviceRecord_t *device );
-static void readDeviceListFromFile( void );
 
-/*********************************************************************
- * FUNCTIONS
- *********************************************************************/
 
-/*********************************************************************
- * @fn      createDeviceRec
- *
- * @brief   create a device and add a rec fto the list.
- *
- * @param   table
- * @param   rmTimer
- *
- * @return  none
- */
-static deviceRecord_t* createDeviceRec( epInfo_t epInfo )
+typedef struct
 {
-  deviceRecord_t *srchRec;
+	uint16 nwkAddr;
+	uint8 endpoint;
+} dev_key_NA_EP;
   
-  //printf("createDeviceRec++\n");
-  
-  //does it already exist  
-  if( findDeviceRec( epInfo.nwkAddr, epInfo.endpoint ) )
+typedef struct
   {
-    //printf("createDeviceRec: Device already exists\n");
-    return NULL;
-  }
+	uint8 ieeeAddr[8];
+	uint8 endpoint;
+} dev_key_IEEE_EP;
       
-  deviceRecord_t *newDevice = malloc( sizeof( deviceRecord_t ) );
+typedef uint8 dev_key_IEEE[8];
   
-  //Store the epInfo
-  memcpy( &(newDevice->epInfo), &epInfo, sizeof(epInfo_t));
+static char * devListComposeRecord(epInfo_t *epInfo, char * record)
+{
+	sprintf(record, "        %02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X , 0x%04X , 0x%02X , 0x%04X , 0x%04X , 0x%02X , 0x%02X , \"%s\"\n", //leave a space at the beginning to mark this record as deleted if needed later, or as bad format (can happen if edited manually). Another space to write the reason of bad format. 
+		epInfo->IEEEAddr[7],
+		epInfo->IEEEAddr[6],
+		epInfo->IEEEAddr[5],
+		epInfo->IEEEAddr[4],
+		epInfo->IEEEAddr[3],
+		epInfo->IEEEAddr[2],
+		epInfo->IEEEAddr[1],
+		epInfo->IEEEAddr[0],
+		epInfo->nwkAddr,
+		epInfo->endpoint,
+		epInfo->profileID,
+		epInfo->deviceID,
+		epInfo->version,
+		epInfo->status,
+		epInfo->deviceName ? epInfo->deviceName : "");
   
-  newDevice->epInfo.deviceName = NULL;
-  newDevice->epInfo.status = DEVLIST_STATE_ACTIVE;
+	return record;
+}
   
-  //printf("New Device added (%x) - ADDR:%x, DEVICE:%x, PROFILE:%x, EP:%x\n", newDevice, newDevice->epInfo.nwkAddr, newDevice->epInfo.deviceID, newDevice->epInfo.profileID, newDevice->epInfo.endpoint);
-   
-  newDevice->next = NULL;   
-   
-  if(deviceRecordHead)
+void devListAddDevice( epInfo_t *epInfo)
   {
-    //find the end of the list and add the record
-    srchRec = deviceRecordHead;
-    // Stop at the last record
-    while ( srchRec->next )
-      srchRec = srchRec->next;
+	char rec[MAX_SUPPORTED_RECORD_SIZE];
 
-    // Add to the list
-    srchRec->next = newDevice; 
+	devListComposeRecord(epInfo, rec);
     
-    //printf("New Device added to end of list (%x)\n", srchRec->next);
-  }
-  else
-  {
-    //printf("createDeviceRec: adding new device to head of the list\n");
-    deviceRecordHead = newDevice;
-  }
-      
-  return newDevice;
-  //printf("createDeviceRec--\n");
+	sdb_add_record(db, rec);
 }
 
-/*********************************************************************
- * @fn      findDeviceRec
- *
- * @brief   find a device and in the list.
- *
- * @param   nwkAddr
- * @param   endpoint
- *
- * @return  deviceRecord_t for the device foundm null if not found
- */
-static deviceRecord_t* findDeviceRec( uint16_t nwkAddr, uint8_t endpoint)
+static epInfo_t * devListParseRecord(char * record)
 {
-  deviceRecord_t *srchRec = deviceRecordHead;
-
-  //printf("findDeviceRec++: nwkAddr:%x, ep:%x\n", nwkAddr, endpoint);
+	char * pBuf = record + 1; //+1 is to ignore the 'for deletion' mark that may just be added to this record.
+	static epInfo_t epInfo;
+	static char deviceName[MAX_SUPPORTED_DEVICE_NAME_LENGTH + 1];
+	parsingResult_t parsingResult = {SDB_TXT_PARSER_RESULT_OK, 0};
   
-  // find record
-  while ( (srchRec) && !((srchRec->epInfo.nwkAddr == nwkAddr) && (srchRec->epInfo.endpoint == endpoint)) )
+	if (record == NULL)
   {
-    //printf("findDeviceRec++: searching nwkAddr:%x, ep:%x\n", srchRec->epInfo.nwkAddr, srchRec->epInfo.endpoint);
-    srchRec = srchRec->next;  
+		return NULL;
   }
   
-  //printf("findDeviceRec[%x]--\n", srchRec);
+	sdb_txt_parser_get_hex_field(&pBuf, epInfo.IEEEAddr, 8, &parsingResult);
+	sdb_txt_parser_get_numeric_field(&pBuf, (uint8_t *)&epInfo.nwkAddr, 2, FALSE, &parsingResult);
+	sdb_txt_parser_get_numeric_field(&pBuf, &epInfo.endpoint, 1, FALSE, &parsingResult);
+	sdb_txt_parser_get_numeric_field(&pBuf, (uint8_t *)&epInfo.profileID, 2, FALSE, &parsingResult);
+	sdb_txt_parser_get_numeric_field(&pBuf, (uint8_t *)&epInfo.deviceID, 2, FALSE, &parsingResult);
+	sdb_txt_parser_get_numeric_field(&pBuf, &epInfo.version, 1, FALSE, &parsingResult);
+	sdb_txt_parser_get_numeric_field(&pBuf, &epInfo.status, 1, FALSE, &parsingResult);
+	sdb_txt_parser_get_quoted_string(&pBuf, deviceName, MAX_SUPPORTED_DEVICE_NAME_LENGTH, &parsingResult);
    
-  return srchRec;
+	if ((parsingResult.code != SDB_TXT_PARSER_RESULT_OK) && (parsingResult.code != SDB_TXT_PARSER_RESULT_REACHED_END_OF_RECORD))
+	{
+		sdbtMarkError( db, record, &parsingResult);
+		return NULL;
 }
 
-/***************************************************************************************************
- * @fn      findDeviceInFileString - remove device from file.
- *
- * @brief   
- * @param   
- *
- * @return 
- ***************************************************************************************************/
-	static char* findDeviceInFileString( uint16_t nwkAddr, uint8_t endpoint, char* fileBuf, uint32_t bufLen )
-	{
-	  char *deviceIdx = NULL, *deviceStartIdx, *deviceEndIdx;
-	  uint32_t remainingBytes;
-	  
-	  printf("findDeviceInFile++: bufLen=%d, fileBuf:%p\n", bufLen, fileBuf);
-	  
-	  deviceStartIdx = fileBuf;
-	  remainingBytes = bufLen;
-	  //set to a non NULL value
-	  deviceEndIdx = fileBuf;
-	  
-	  while( ((deviceStartIdx - fileBuf) < bufLen) && (deviceEndIdx != 0) )
+	if (strlen(deviceName) > 0)
 	  {
-		printf("findDeviceInFile++: bufLen=%d\n", bufLen);
+		epInfo.deviceName = deviceName;
 		
-		//is this device the correct device (start + IEEE Addr of 8 bytes)
-		if( *((uint16_t*)(deviceStartIdx+8)) == nwkAddr )
-		{
-		  //device found
-		  printf("findDeviceInFileString: device:%x found\n", nwkAddr);
-		  deviceIdx = deviceStartIdx;
-		  break;
 		}
 		else
 		{
-		  printf("findDeviceInFileString: device:%x found, looking for %x\n", *((uint16_t*)(deviceStartIdx+8)), nwkAddr);	
+		epInfo.deviceName = NULL;
 		}	 
 		 
-		//find end of current device by finding the delimiter
-		deviceEndIdx = deviceStartIdx;
-		while((*deviceEndIdx != ';') && ((fileBuf - deviceEndIdx) < bufLen))
-		{
-		  deviceEndIdx++;
+	return &epInfo;
 		}
 		
-		if( deviceEndIdx > (fileBuf + bufLen) )
-		{
-		  //past end of file string
-		  //printf("findDeviceInFile++\n");
-		   deviceEndIdx = NULL;
-		}
 		
-		if( deviceEndIdx )
-		{
-		  remainingBytes = bufLen - (fileBuf - deviceEndIdx);
-		  deviceStartIdx = &(deviceEndIdx[1]);	  
-		}
-	  }
 	  
-	  //printf("findDeviceInFile-- [%x]\n", (uint32_t) deviceIdx);
-	  
-	  return deviceIdx;
-	}
-
-/***************************************************************************************************
- * @fn      removeDeviceFromFile - remove device from file.
- *
- * @brief   
- * @param   
- *
- * @return 
- ***************************************************************************************************/
-	static void removeDeviceFromFile( uint16_t nwkAddr, uint8_t endpoint )
-	{
-	  FILE *fpDevFile;
-	  uint32_t fileSize;
-	  char *fileBuf, *deviceStr, *devStrEnd;
-	  
-	  //printf("removeDeviceFromFile++\n");
-	  
-	  fpDevFile = fopen("devicelistfile.dat", "rwb");
-	  
-	  if(fpDevFile)
+static int devListCheckKeyIeeeEp(char * record, dev_key_IEEE_EP * key)
 	  {
-		//read the file into a buffer  
-		fseek(fpDevFile, 0, SEEK_END);
-		fileSize = ftell(fpDevFile);
-		rewind(fpDevFile);	
-		fileBuf = (char*) calloc(sizeof(char), fileSize);  
-		fread(fileBuf, 1, fileSize, fpDevFile);
-	
-		//printf("removeDeviceFromFile: number of bytes in file = %d\n", fileSize);
-		//printf("removeDeviceFromFile: Searching for device string\n");
-		//find the device
-		deviceStr = findDeviceInFileString( nwkAddr, endpoint, fileBuf, fileSize );
+	epInfo_t * epInfo;
+	int result = SDB_CHECK_KEY_NOT_EQUAL;
 		
-		if( deviceStr )
+	epInfo = devListParseRecord(record);
+	if (epInfo == NULL)
 		{
-		  printf("removeDeviceFromFile: device string:%x\n", (uint32_t) deviceStr);
-		
-		  //find end of current device by finding the delimiter
-		  devStrEnd = deviceStr;
-		  while((*devStrEnd != ';') && ((devStrEnd - fileBuf) < fileSize))
-		  {
-			devStrEnd++;
-			printf("removeDeviceFromFile: finding delimiter:%c:%x\n", *devStrEnd, (uint32_t) devStrEnd);
+		return SDB_CHECK_KEY_ERROR;
 		  } 	 
 		  
-		  if((devStrEnd - fileBuf) < fileSize)
-		  { 		
-			//copy start of file to bigenning of device
-			fwrite((const void *) fileBuf, fileBuf-deviceStr, 1, fpDevFile);
-			//copy end of device to end of file
-			fwrite((const void *) devStrEnd, fileSize - (fileBuf - devStrEnd), 1, fpDevFile);	   
-		  }
-		  else
+	if ((memcmp(epInfo->IEEEAddr, key->ieeeAddr, Z_EXTADDR_LEN) == 0) && (epInfo->endpoint == key->endpoint))
 		  {
-			printf("removeDeviceFromFile: device delimiter not found\n");
-		  }
-		}
-		else
-		{
-		  printf("removeDeviceFromFile: device not found in file\n");
-		}
+		result = SDB_CHECK_KEY_EQUAL;
 	  }
 		
-	  fflush(fpDevFile);
-	  fclose(fpDevFile);
-	  free(fileBuf);
+	return result;
 	}
 
-/***************************************************************************************************
- * @fn      writeDeviceToFile - store device list.
- *
- * @brief   
- * @param   
- *
- * @return 
- ***************************************************************************************************/
-static void writeDeviceToFile( deviceRecord_t *device )
-{
-  FILE *fpDevFile;
-  
-  //printf("writeDeviceToFile++\n");
-  
-  fpDevFile = fopen("devicelistfile.dat", "a+b");
-
-  if(fpDevFile)
-  {
-    //printf("writeDeviceToFile: opened file\n");
-    
-    //printf("writeDeviceToFile: Store epInfo[%d - %d - %d - %d]\n", sizeof(epInfo_t), sizeof (char*), sizeof (uint8_t), ((sizeof(epInfo_t)) - (sizeof (char*) + sizeof (uint8_t))));
-    //Store epInfo - device name pointer and status 
-    fwrite((const void *) &(device->epInfo), (sizeof(epInfo_t) - (sizeof (char*) + sizeof (uint8_t))), 1, fpDevFile);
-    
-    //Store deviceName len
-    if(device->epInfo.deviceName)
+static int devListCheckKeyIeee(char * record, uint8_t key[Z_EXTADDR_LEN])
     {    
-      uint8_t i;      
-      printf("writeDeviceToFile: Store deviceName - %d: ", (device->epInfo.deviceName[0]));
+	epInfo_t * epInfo;
+	int result = SDB_CHECK_KEY_NOT_EQUAL;
       
-      //first char of dev name is str length
-      for(i = 0; i < (device->epInfo.deviceName[0] + 1) ; i++)
+	epInfo = devListParseRecord(record);
+	if (epInfo == NULL)
       {
-        fwrite((const void *) (&(device->epInfo.deviceName[i])), 1, 1, fpDevFile);
-        printf("%c", (device->epInfo.deviceName[i]));        
-      }
-      printf("\n");
+		return SDB_CHECK_KEY_ERROR;
     }
-    else
+//printf("Comparing 0x%08X%08X to 0x%08X%08X\n", *(uint32_t *)((epInfo->IEEEAddr)+4), *(uint32_t *)((epInfo->IEEEAddr)+0), *(uint32_t *)(key+4), *(uint32_t *)(key+0));
+	if (memcmp(epInfo->IEEEAddr, key, Z_EXTADDR_LEN) == 0)
     {
-      //just store the len of 0
-      uint8_t tmp = 0;
-      fwrite(&tmp, 1, 1, fpDevFile);
+		result = SDB_CHECK_KEY_EQUAL;
     }
     
-    //printf("writeDeviceToFile: Store status\n");
-    //Store status
-    fwrite((const void *) &(device->epInfo.status), 1, 1, fpDevFile);
-    //socWrite delimter
-    fwrite(";", 1, 1, fpDevFile);
-    
-    fflush(fpDevFile);
-    fclose(fpDevFile); 
-  }
+	return result;
 }    
 
-/***************************************************************************************************
- * @fn      readDeviceListFromFile - restore the device list.
- *
- * @brief   
- *
- * @return 
- ***************************************************************************************************/
-static void readDeviceListFromFile( void )
-{
-  FILE *fpDevFile;
-  deviceRecord_t *device;
-  epInfo_t epInfo;
-  char chTmp;
   
-  //printf("readDeviceListFromFile++\n");
-  fpDevFile = fopen("devicelistfile.dat", "a+b");
 
-  if(fpDevFile)
+static int devListCheckKeyNaEp(char * record, dev_key_NA_EP * key)
   {
-    //printf("readDeviceListFromFile: file opened\n");
-    //read epInfo_t - device name pointer and status 
-    while(fread(&(epInfo), (sizeof(epInfo_t) - (sizeof (char*) + sizeof (uint8_t))), 1, fpDevFile))
-    {
-      //printf("readDeviceListFromFile: epInfo[%d] read for device %x\n", (sizeof(epInfo_t) - (sizeof (char*) + sizeof (uint8_t))), epInfo.nwkAddr);
+	epInfo_t * epInfo;
+	int result = SDB_CHECK_KEY_NOT_EQUAL;
       
-      device = createDeviceRec(epInfo);      
-      
-      if(device)
+	epInfo = devListParseRecord(record);
+	if (epInfo == NULL)
       {
-        uint8_t strLen; 
-        char *strName;
-        fread(&(strLen), 1, 1, fpDevFile);
-        //printf("readDeviceListFromFile: strLen %d\n", strLen); 
+		return SDB_CHECK_KEY_ERROR;
+	}
         
-        if(strLen > 0)
+	if ((epInfo->nwkAddr == key->nwkAddr) && (epInfo->endpoint == key->endpoint))
         {
-          strName = malloc(strLen + 1);
-          if(strName)
-          {          
-            strName[0] = strLen;
-            fread(&(strName[1]), 1, strLen, fpDevFile);
+		result = SDB_CHECK_KEY_EQUAL;
           }
-          device->epInfo.deviceName = strName;
+
+	return result;
         }
 
-        fread(&(device->epInfo.status), 1, 1, fpDevFile);
-        //printf("readDeviceListFromFile: device->epInfo.status %x\n", device->epInfo.status); 
-        
-        //read ';' delimeter
-        fread(&chTmp, 1, 1, fpDevFile);
-        
-        if(chTmp != ';')
+epInfo_t * devListRemoveDeviceByNaEp( uint16 nwkAddr, uint8 endpoint )
         {
-          //printf("readDeviceListFromFile: Error, device delimter not found\n");        
-          return;
-        }
-      }
-    }
+	dev_key_NA_EP key = {nwkAddr, endpoint};
     
-    fflush(fpDevFile);
-    fclose(fpDevFile); 
-  }
+	return devListParseRecord(sdb_delete_record(db, &key , (check_key_f)devListCheckKeyNaEp));
   
-  //printf("readDeviceListFromFile--\n");
 }
 
-/*********************************************************************
- * @fn      devListAddDevice
- *
- * @brief   create a device and add a rec to the list.
- *
- * @param   epInfo
- *
- * @return  none
- */
-void devListAddDevice( epInfo_t *epInfo)
-{ 
-  //printf("devListAddDevice++(%x:%x)\n", epInfo->nwkAddr, epInfo->endpoint);
-   
-  deviceRecord_t *device = createDeviceRec(*epInfo);
-  if(device)
+epInfo_t * devListRemoveDeviceByIeee( uint8_t ieeeAddr[8] )
   {
-    writeDeviceToFile(device);
+	return devListParseRecord(sdb_delete_record(db, ieeeAddr , (check_key_f)devListCheckKeyIeee));
   }
   
-  //printf("\n\n\ndevListAddDevice: list=\n");
-  //find the end of the list and add the record
-  deviceRecord_t *srchRec = deviceRecordHead;
-  //printf("%x", srchRec);
-  
-  while ( srchRec->next )
-  {
-      srchRec = srchRec->next;
-      //printf("%x\n", srchRec);
-  }
-  //printf("\n\n\n");
-     
-  //printf("devListAddDevice--\n");
-}
-
-/*********************************************************************
- * @fn      devListRemoveDevice
- *
- * @brief   remove a device rec from the list.
- *
- * @param   nwkAddr - nwkAddr of device to be removed
- * @param   endpoint - endpoint of device to be removed 
- *
- * @return  none
- */
-void devListRemoveDevice( uint16_t nwkAddr, uint8_t endpoint )
+epInfo_t * devListGetDeviceByIeeeEp( uint8_t ieeeAddr[8], uint8_t endpoint )
 {
-  deviceRecord_t *srchRec, *prevRec=NULL;
-
-  printf("deleteDeviceRec: nwkAddr:%x, endpoint:%x \n", nwkAddr, endpoint);
-
-  // find record and prev device record
-  srchRec = deviceRecordHead;
+	char * rec;
+	dev_key_IEEE_EP key;
   
-  // find record
-  while ( (srchRec) && !((srchRec->epInfo.nwkAddr == nwkAddr) && (srchRec->epInfo.endpoint == endpoint)) )
+	memcpy(key.ieeeAddr, ieeeAddr, 8);
+	key.endpoint = endpoint;
+	rec = SDB_GET_UNIQUE_RECORD(db, &key, (check_key_f)devListCheckKeyIeeeEp);
+	if (rec == NULL)
   {
-    prevRec = srchRec;
-    srchRec = srchRec->next;  
+		return NULL;
   }
      
-  if (srchRec == NULL)
-  {
-      printf("deleteDeviceRec: record not found\n");
-      return;    
-  }
-  else
-  {               
-    // delete the rec from the list
-    if ( prevRec == NULL )      
-    {
-      //at head of the list
-      //remove record from list 
-      deviceRecordHead = srchRec->next;
-    }
-    else
-    {
-      //remove record from list    
-      prevRec->next = srchRec->next;    
-    }
-    
-    free(srchRec);        
-    removeDeviceFromFile(nwkAddr, endpoint);
-  }
+	return devListParseRecord(rec);
 }
 
-/*********************************************************************
- * @fn      devListRestorDevices
- *
- * @brief   create a device list from file.
- *
- * @param   none
- *
- * @return  none
- */
-void devListRestorDevices( void )
+epInfo_t * devListGetDeviceByNaEp( uint16_t nwkAddr, uint8_t endpoint )
 {
-  //printf("devListRestorDevices++\n");
-  if( deviceRecordHead == NULL)
-  {
-    readDeviceListFromFile();
-  }
-  //else do what, should we delete the list and recreate from the file?
-}
+	char * rec;
+	dev_key_NA_EP key;
 
-/*********************************************************************
- * @fn      devListChangeDeviceName
- *
- * @brief   change the name of a device.
- *
- * @return 
- */
-void devListChangeDeviceName( uint16_t devNwkAddr, uint8_t devEndpoint, char *deviceNameStr)
-{
-  printf("devListChangeDeviceName++: devNwkAddr:%x, devEndpoint:%x\n", devNwkAddr, devEndpoint);   
-    
-  deviceRecord_t *device = findDeviceRec( devNwkAddr, devEndpoint );             
-  
-  if(device)
+	key.nwkAddr = nwkAddr;
+	key.endpoint = endpoint;
+	rec = SDB_GET_UNIQUE_RECORD(db, &key, (check_key_f)devListCheckKeyNaEp);
+	if (rec == NULL)
   {
-    if(device->epInfo.deviceName)
-    {
-      free(device->epInfo.deviceName);
+		return NULL;
     }
     
-    printf("devListChangeDeviceName: removing device from file\n");  
-    removeDeviceFromFile(devNwkAddr, devEndpoint);
+	return devListParseRecord(rec);
+}
+
+uint32_t devListNumDevices(void)
+    {
+	return sdbtGetRecordCount(db);
+    }
     
-    printf("devListChangeDeviceName: Changing device name: %c\n", (deviceNameStr[0] + 1));      
-    //fisrt byte of deviceNameStr is the size of the string
-    device->epInfo.deviceName = malloc(deviceNameStr[0]);
-    strncpy(device->epInfo.deviceName, &(deviceNameStr[0]), (deviceNameStr[0] + 1) );
         
-    printf("devListChangeDeviceName: writing device to file\n");  
-    writeDeviceToFile(device);           
-  }
-  else
+epInfo_t * devListGetNextDev(uint32_t *context)
   {
-    printf("devListChangeDeviceName: Device not found");  
-  }  
-  
-  printf("devListChangeDeviceName--\n");
+	char * rec;
+	epInfo_t *epInfo;
 
-  return;  
+	do
+{  
+		rec = SDB_GET_NEXT_RECORD(db,context);
+  
+		if (rec == NULL)
+  {
+			return NULL;
+  }
+    
+		epInfo = devListParseRecord(rec);
+	} while (epInfo == NULL); //in case of a bad-format record - skip it and read the next one
+  
+	return epInfo;
 }
 
-/*********************************************************************
- * @fn      devListNumDevices
- *
- * @brief   get the number of devices in the list.
- *
- * @param   none
- *
- * @return  none
- */
-uint32_t devListNumDevices( void )
-{  
-  uint32_t recordCnt=0;
-  deviceRecord_t *srchRec;
   
-  //printf("devListNumDevices++\n");
-  
-  // Head of the list
-  srchRec = deviceRecordHead;  
-  
-  if(srchRec==NULL)
-  {
-    //printf("devListNumDevices: deviceRecordHead NULL\n");
-    return -1;
-  }
-    
-  // Stop when rec found or at the end
-  while ( srchRec )
-  {  
-    //printf("devListNumDevices: recordCnt=%d\n", recordCnt);
-    srchRec = srchRec->next;  
-    recordCnt++;      
-  }
-  
-  //printf("devListNumDevices %d\n", recordCnt);
-  return (recordCnt);
-}
-
-/*********************************************************************
- * @fn      devListGetNextDev
- *
- * @brief   Return the next device in the list.
- *
- * @param   nwkAddr - if 0xFFFF it will return head of the list
- *
- * @return  epInfo, return next epInfo from nwkAddr and ep supplied or 
- *          NULL if at end of the list
- */
-epInfo_t* devListGetNextDev( uint16_t nwkAddr, uint8_t endpoint )
-{  
-  epInfo_t* epInfo = NULL;
-  deviceRecord_t *srchRec;
-  
-  //printf("devListGetNextDev++: nwkAddr=%x, endpoint=%x\n", nwkAddr, endpoint);
-  
-  // Head of the list
-  srchRec = deviceRecordHead;  
-  
-  if(nwkAddr != 0xFFFF)
-  {
-    //Find the record for nwkAddr
-    srchRec = findDeviceRec(nwkAddr, endpoint);
-    //get the next record (may be NULL if at end of list)
-    srchRec = srchRec->next;
-    
-    //printf("devListGetNextDev: found device %x\n", srchRec);      
-    
-    //Store the epInfo
-    if(srchRec)
+void devListInitDatabase( char * dbFilename )
     {
-      //printf("devListGetNextDev: returning next device %x\n", srchRec);      
-      epInfo = &(srchRec->epInfo);
-    }
+	db = sdb_init_db(dbFilename, sdbtGetRecordSize, sdbtCheckDeleted, sdbtCheckIgnored, sdbtMarkDeleted, (consolidation_processing_f)sdbtErrorComment, SDB_TYPE_TEXT, 0);
+	sdb_consolidate_db(&db);
   }
-  else
-  {    
-    //printf("\n\n\ndevListGetNextDev: list= [%x]\n", deviceRecordHead);
-    //find the end of the list and add the record
-    deviceRecord_t *srchRec1 = deviceRecordHead;
-    //printf("%x", srchRec1);
-    if(srchRec1)
-    {
-      while ( srchRec1->next )
-      {
-          srchRec1 = srchRec1->next;
-          //printf("%x\n", srchRec1);
-      }
-    }
-    //printf("\n\n\n");
         
-    //printf("devListGetNextDev: returning head of list\n");
-    //return fisrt record
-    if(deviceRecordHead)
-    {      
-      epInfo = &(deviceRecordHead->epInfo);
-    }
-  }
   
-  //printf("devListGetNextDev[%x]--\n", epInfo);
-  
-  return (epInfo);
-}

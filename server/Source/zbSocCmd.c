@@ -1,3 +1,4 @@
+
 /*
  * zbSocCmd.c
  *
@@ -53,6 +54,7 @@
 #include <string.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/timerfd.h>
 
 #include "zbSocCmd.h"
 #include "zbSocTransport.h"
@@ -90,27 +92,26 @@ len,   /*RPC payload Len                                      */     \
           + ((uint32_t)((Byte2) & 0x00FF) << 16) \
           + ((uint32_t)((Byte3) & 0x00FF) << 24)))
 
-#define NUM_OF_TIMERS (sizeof(timers) / sizeof(timers[0]))
 			
-#define TIMEOUT_TIMER (&timers[0])
-#define REPORTING_TIMER (&timers[1])
-          
+#define TIMEOUT_TIMER 0 //(&timers[0])
+#define REPORTING_TIMER 1 //(&timers[1])
+			      
 /*********************************************************************
  * CONSTANTS
  */
 #define MT_SYS_OSAL_NV_WRITE                 0x09
 
-#define MT_APP_RPC_CMD_TOUCHLINK             0x01
-#define MT_APP_RPC_CMD_RESET_TO_FN           0x02
-#define MT_APP_RPC_CMD_CH_CHANNEL            0x03
-#define MT_APP_RPC_CMD_JOIN_HA               0x04
-#define MT_APP_RPC_CMD_PERMIT_JOIN           0x05
-#define MT_APP_RPC_CMD_SEND_RESET_TO_FN      0x06
+#define MT_APP_RPC_CMD_TOUCHLINK          0x01
+#define MT_APP_RPC_CMD_RESET_TO_FN        0x02
+#define MT_APP_RPC_CMD_CH_CHANNEL         0x03
+#define MT_APP_RPC_CMD_JOIN_HA            0x04
+#define MT_APP_RPC_CMD_PERMIT_JOIN        0x05
+#define MT_APP_RPC_CMD_SEND_RESET_TO_FN   0x06
 #define MT_APP_RPC_CMD_INSTALL_CERTIFICATE   0x07
 
 #define MT_APP_RSP                           0x80
 #define MT_APP_ZLL_TL_IND                    0x81
-#define MT_APP_NEW_DEV_IND                   0x82
+#define MT_APP_NEW_DEV_IND               0x82
 #define MT_APP_KEY_ESTABLISHMENT_STATE_IND   0x90
 
 #define MT_DEBUG_MSG                         0x80
@@ -127,21 +128,21 @@ len,   /*RPC payload Len                                      */     \
 #define ZCL_CMD_WRITE_RSP                               0x04
 
 // General Clusters
-#define ZCL_CLUSTER_ID_GEN_IDENTIFY                          0x0003
-#define ZCL_CLUSTER_ID_GEN_GROUPS                            0x0004
-#define ZCL_CLUSTER_ID_GEN_SCENES                            0x0005
-#define ZCL_CLUSTER_ID_GEN_ON_OFF                            0x0006
-#define ZCL_CLUSTER_ID_GEN_LEVEL_CONTROL                     0x0008
+#define ZCL_CLUSTER_ID_GEN_IDENTIFY                    0x0003
+#define ZCL_CLUSTER_ID_GEN_GROUPS                      0x0004
+#define ZCL_CLUSTER_ID_GEN_SCENES                      0x0005
+#define ZCL_CLUSTER_ID_GEN_ON_OFF                      0x0006
+#define ZCL_CLUSTER_ID_GEN_LEVEL_CONTROL               0x0008
 #define ZCL_CLUSTER_ID_GEN_KEY_ESTABLISHMENT                 0x0800
 // Lighting Clusters
-#define ZCL_CLUSTER_ID_LIGHTING_COLOR_CONTROL                0x0300
+#define ZCL_CLUSTER_ID_LIGHTING_COLOR_CONTROL          0x0300
 // Mettering and Sensing Clusters
 #define ZCL_CLUSTER_ID_MS_TEMPERATURE_MEASUREMENT			 0x0402
 #define ZCL_CLUSTER_ID_MS_REL_HUMIDITY_MEASUREMENT		 0x0405
 // Pricing
 #define ZCL_CLUSTER_ID_SE_PRICING                            0x0700
-// Metering
-#define ZCL_CLUSTER_ID_SE_SIMPLE_METERING                    0x0702
+//Metering
+#define ZCL_CLUSTER_ID_SE_SIMPLE_METERING              0x0702
 // Messaging
 #define ZCL_CLUSTER_ID_SE_MESSAGE                            0x0703
 // Security and Safety (SS) Clusters
@@ -286,6 +287,8 @@ len,   /*RPC payload Len                                      */     \
 #define ZBSOC_CERT_OPER_ERROR       2
 #define ZBSOC_CERT_OPER_STOP        3
 
+#define Z_EXTADDR_LEN 8
+
 typedef enum
 {
   afAddrNotPresent = 0,
@@ -384,6 +387,8 @@ zllTimer timers[2] = {
 	{NULL, 0, FALSE},
 };
 
+timerFDs_t * timerFDs = NULL;
+
 /*********************************************************************
  * EXTERNAL VARIABLES
  */
@@ -401,10 +406,8 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
 static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen, uint16_t clusterID, uint16_t nwkAddr, uint8_t endpoint);
 static void processRpcSysSys(uint8_t *rpcBuff);
 static void processRpcSysApp(uint8_t *rpcBuff);
-static void processRpcSysDbg(uint8_t *rpcBuff);
+static void processRpcSysDbg(uint8_t *rpcBuff, uint8_t len);
 void zbSocSblEnableBootloader();
-void zbSocTimerCreate(zllTimer * timer, timerCallback_t callback);
-void zbSocTimerDelete(zllTimer * timer);
 void zbSocTimeoutCallback(void);
 void zbSocSblReportingCallback(void);
 static void processRpcSysSbl(uint8_t *rpcBuff);
@@ -427,7 +430,7 @@ static void calcFcs(uint8_t *msg, int size)
 	uint8_t result = 0;
 	int idx = 1; //skip SOF
 	int len = (size - 2);  // skip FCS
-	
+
 	while ((len--) != 0) {
 		result ^= msg[idx++];
 	}
@@ -558,7 +561,7 @@ void zbSocForceRun(void)
 	tcflush(serialPortFd, TCOFLUSH);  
 	
 }
-
+	
 void zbSocClose( void )
 {
   zbSocTransportClose();
@@ -705,28 +708,67 @@ void zbSocOpenNwk(void)
  */
 void zbSocSetState(uint8_t state, uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 {
-	uint8_t cmd[] = {
-    0xFE,                                                                                      
-    11,   /*RPC payload Len */          
-    0x29, /*MT_RPC_CMD_AREQ + MT_RPC_SYS_APP */          
-    0x00, /*MT_APP_MSG  */          
-    0x0B, /*Application Endpoint */          
-    (dstAddr & 0x00ff),
-    (dstAddr & 0xff00) >> 8,
-    endpoint, /*Dst EP */          
-    (ZCL_CLUSTER_ID_GEN_ON_OFF & 0x00ff),
-    (ZCL_CLUSTER_ID_GEN_ON_OFF & 0xff00) >> 8,
-    0x04, //Data Len
-    addrMode, 
-    0x01, //0x01 ZCL frame control field.  (send to the light cluster only)
-    transSeqNumber++,
-    (state ? 1:0),
-    0x00       //FCS - fill in later
-  };
-      
-  	calcFcs(cmd, sizeof(cmd));  	
+  	uint8_t cmd[] = {
+  		0xFE,                                                                                      
+  		11,   /*RPC payload Len */          
+  		0x29, /*MT_RPC_CMD_AREQ + MT_RPC_SYS_APP */          
+  		0x00, /*MT_APP_MSG  */          
+  		0x0B, /*Application Endpoint */          
+  		(dstAddr & 0x00ff),
+  		(dstAddr & 0xff00) >> 8,
+  		endpoint, /*Dst EP */          
+  		(ZCL_CLUSTER_ID_GEN_ON_OFF & 0x00ff),
+  		(ZCL_CLUSTER_ID_GEN_ON_OFF & 0xff00) >> 8,
+  		0x04, //Data Len
+  		addrMode, 
+  		0x01, //0x01 ZCL frame control field.  (send to the light cluster only)
+  		transSeqNumber++,
+		(state ? 1:0),
+  		0x00       //FCS - fill in later
+  	};
+
+  	calcFcs(cmd, sizeof(cmd));
     zbSocTransportWrite(cmd,sizeof(cmd));
 }
+
+
+/*********************************************************************
+ * @fn      zbSocGetTimerFds
+ *
+ * @brief   Send the on/off command to a ZigBee light.
+ *
+ * @param   state - 0: Off, 1: On.
+ * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be controled.
+ * @param   endpoint - endpoint of the Light.
+ * @param   addrMode - Unicast or Group cast.
+ *
+ * @return  none
+ */
+void zbSocGetTimerFds(timerFDs_t *fds)
+{
+  int i;
+  
+  timerFDs = fds;
+  
+  for (i = 0; i < NUM_OF_TIMERS; i++)
+  {
+    fds[i].fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+    
+    if (fds[i].fd == -1)
+    {
+      printf("Error creating timer\n");
+      exit(-3);
+    }
+    else
+    {
+      printf("Timer created OK\n");
+    }
+  }
+  
+  fds[TIMEOUT_TIMER].callback = zbSocTimeoutCallback;
+  fds[REPORTING_TIMER].callback = zbSocSblReportingCallback;
+}
+
 
 /*********************************************************************
  * @fn      zbSocNVWrite
@@ -798,7 +840,7 @@ uint8_t zbSocInitiateCertInstall(char *filename, uint8_t force2reset)
   {
     int pos;
     int i, j;
-
+  	
 //    printf("zbSocInitiateCertInstall: current line = %s\n", csLine);
     // Skip empty lines and lines starting with space
     if ((strlen(csLine) > 0) && (csLine[0] != ' '))
@@ -916,8 +958,8 @@ uint8_t zbSocInitiateCertInstall(char *filename, uint8_t force2reset)
       printf("zbSocInitiateCertInstall: No valid information in the certificate.\n");
       status = CERT_RESULT_WRONG_FORMAT;
     }
-  }
-	
+}
+
 	return status;
 }
 
@@ -944,57 +986,14 @@ uint8_t zbSocSblInitiateImageDownload(char * filename, uint8_t progressReporting
 
 	if (zbSocSblProgressReportingInterval > 0)
 	{
-		zbSocTimerCreate(REPORTING_TIMER, zbSocSblReportingCallback);
 		zbSocEnableTimeout(REPORTING_TIMER, zbSocSblProgressReportingInterval * 100);
 	}
 
-	zbSocTimerCreate(TIMEOUT_TIMER, zbSocTimeoutCallback);
-	
 	zbSocSblState = ZBSOC_SBL_STATE_HANDSHAKING;
 	timeout_retries = MAX_TIMEOUT_RETRIES;
 	processRpcSysSbl(NULL);
 
 	return SUCCESS;
-}
-
-/*********************************************************************
- * @fn      zbSocTimerCreate
- *
- * @brief   
- *
- * @param   
- *
- * @return  
- */
-void zbSocTimerCreate(zllTimer * timer, timerCallback_t callback)
-{
-	int rc;
-	struct sigevent sevp;
-
-	sevp.sigev_notify  = SIGEV_NONE;
-	
-	timer->enabled = FALSE;
-	timer->callback = callback;
-	rc = timer_create(CLOCK_REALTIME, &sevp, &(timer->id));
-//	todo: assert(rc==0);
-}
-
-/*********************************************************************
- * @fn      zbSocTimerDelete
- *
- * @brief   
- *
- * @param   
- *
- * @return  
- */
-void zbSocTimerDelete(zllTimer * timer)
-{
-	int rc;
-	
-	zbSocDisableTimeout(timer);
-	rc = timer_delete(timer->id);
-//	todo: assert(rc==0);
 }
 
 /*********************************************************************
@@ -1006,7 +1005,7 @@ void zbSocTimerDelete(zllTimer * timer)
  *
  * @return  
  */
-void zbSocDisableTimeout(zllTimer * timer)
+void zbSocDisableTimeout(int timer)
 {
 	struct itimerspec its;
 
@@ -1015,12 +1014,11 @@ void zbSocDisableTimeout(zllTimer * timer)
 	its.it_value.tv_sec = 0;
 	its.it_value.tv_nsec = 0;
 	
-	if (timer_settime(timer->id, 0, &its, NULL) != 0)
+		if (timerfd_settime(timerFDs[timer].fd, 0, &its, NULL) != 0)
 	{
-		exit (0); //assert
+			printf("Error disabling timer %d\n", timer);
+			exit (0); //todo: assert
 	}
-	
-	timer->enabled = FALSE;
 }
 
 /*********************************************************************
@@ -1032,99 +1030,24 @@ void zbSocDisableTimeout(zllTimer * timer)
  *
  * @return  
  */
-void zbSocEnableTimeout(zllTimer * timer, uint32_t milliseconds)
+void zbSocEnableTimeout(int timer, uint32_t milliseconds)
 {
 	struct itimerspec its;
+
+	printf("zbSocEnableTimeout #%d\n",timer);
 
 	its.it_interval.tv_sec = 0;
 	its.it_interval.tv_nsec = 0;
 	its.it_value.tv_sec = (milliseconds*1000000) / 1000000000;;
 	its.it_value.tv_nsec = (milliseconds*1000000) % 1000000000;
 	
-	if (timer_settime(timer->id, 0, &its, NULL) != 0)
+	if (timerfd_settime(timerFDs[timer].fd, 0, &its, NULL) != 0)
 	{
-		exit (0); //assert
-	}
-
-	timer->enabled = TRUE;
-}
-
-/*********************************************************************
- * @fn      zbSocIsTimeoutEnabled
- *
- * @brief   
- *
- * @param   
- *
- * @return  
- */
-uint8_t zbSocIsTimeoutEnabled(zllTimer * timer)
-{
-	return timer->enabled;
-}
-
-/*********************************************************************
- * @fn      zbSocHandleTimers
- *
- * @brief   
- *
- * @param   
- *
- * @return  
- */
-uint8_t zbSocHandleTimers(void)
-{
-	int x;
-	uint8_t timers_enabled = FALSE;
-
-	for (x = 0; x < NUM_OF_TIMERS; x++)
-	{
-		if (zbSocIsTimeoutEnabled(&(timers[x])))
-		{
-			if (zbSocIsTimerExpired(&(timers[x])))
-			{
-				timers[x].callback();
-			}
-			else
-			{
-				timers_enabled = TRUE;
-			}
+		printf("Error setting timer %d\n", timer);
+		exit (0); //todo: assert
 		}
 	}
 	
-	return timers_enabled;
-}
-
-/*********************************************************************
- * @fn      zbSocIsTimerExpired
- *
- * @brief   
- *
- * @param   
- *
- * @return  
- */
-uint8_t zbSocIsTimerExpired(zllTimer * timer)
-{
-	struct itimerspec its;
-
-	if (timer->enabled)
-	{
-		if (timer_gettime(timer->id, &its) != 0)
-		{
-			exit(0); //assert
-		}
-		
-		if ((its.it_value.tv_sec == 0) && (its.it_value.tv_nsec == 0))
-		{
-			timer->enabled = FALSE;
-		}
-	}
-
-	return (!timer->enabled);
-}
-
-
 
 /*********************************************************************
  * @fn      zbSocFinishLoadingImage
@@ -1144,12 +1067,13 @@ void zbSocFinishLoadingImage(void)
 	
 	zbSocSblState = ZBSOC_SBL_STATE_IDLE;
 
-	zbSocTimerDelete(TIMEOUT_TIMER);
+	zbSocDisableTimeout(TIMEOUT_TIMER);
 	
 	if (zbSocSblProgressReportingInterval > 0)
 	{
-		zbSocTimerDelete(REPORTING_TIMER);
 		zbSocSblReportingPending = FALSE;
+		zbSocSblProgressReportingInterval = 0;
+		zbSocDisableTimeout(REPORTING_TIMER);
 	}
 }
 
@@ -1190,7 +1114,7 @@ void zbSocSetLevel(uint8_t level, uint16_t time, uint16_t dstAddr, uint8_t endpo
   		0x00       //FCS - fill in later
   	};    
     
-    calcFcs(cmd, sizeof(cmd));    
+    calcFcs(cmd, sizeof(cmd));
     zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
@@ -1271,7 +1195,7 @@ void zbSocSetSat(uint8_t sat, uint16_t time, uint16_t dstAddr, uint8_t  endpoint
 		0x00       //FCS - fill in later
 	};
 	
-  calcFcs(cmd, sizeof(cmd));
+	calcFcs(cmd, sizeof(cmd));
   zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
@@ -1362,7 +1286,6 @@ void zbSocSblHandshake(void)
 }
 
 
-
 /*********************************************************************
  * @fn      zbSocSblEnableBootloader
  *
@@ -1380,7 +1303,6 @@ void zbSocSblEnableBootloader()
 	
 	zbSocTransportWrite(cmd,sizeof(cmd));
 }
-
 
 
 /*********************************************************************
@@ -1489,7 +1411,7 @@ void zbSocAddGroup(uint16_t groupId, uint16_t dstAddr, uint8_t endpoint, uint8_t
 	
 	printf("zbSocAddGroup: dstAddr 0x%x\n", dstAddr);
     
-  calcFcs(cmd, sizeof(cmd));	
+	calcFcs(cmd, sizeof(cmd));
   zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
@@ -1530,7 +1452,7 @@ void zbSocStoreScene(uint16_t groupId, uint8_t sceneId, uint16_t dstAddr, uint8_
 		0x00       //FCS - fill in later
 	};
     
-  calcFcs(cmd, sizeof(cmd));	
+	calcFcs(cmd, sizeof(cmd));
   zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
@@ -1571,7 +1493,7 @@ void zbSocRecallScene(uint16_t groupId, uint8_t sceneId, uint16_t dstAddr, uint8
 		0x00       //FCS - fill in later
 	};
     
-  calcFcs(cmd, sizeof(cmd));	
+	calcFcs(cmd, sizeof(cmd));
   zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
@@ -1616,11 +1538,11 @@ void zbSocBind(uint16_t srcNwkAddr, uint8_t srcEndpoint, uint8_t srcIEEE[8], uin
   	dstEndpoint,                  /*Dst endpoint for the binding*/  	  	
 		0x00       //FCS - fill in later
 	};
-      	
+      
 	printf("zbSocBind: srcNwkAddr=0x%x, srcEndpoint=0x%x, srcIEEE=0x%x:%x:%x:%x:%x:%x:%x:%x, dstEndpoint=0x%x, dstIEEE=0x%x:%x:%x:%x:%x:%x:%x:%x, clusterID:%x\n", 
 	          srcNwkAddr, srcEndpoint, srcIEEE[0], srcIEEE[1], srcIEEE[2], srcIEEE[3], srcIEEE[4], srcIEEE[5], srcIEEE[6], srcIEEE[7], 
 	          srcEndpoint, dstIEEE[0], dstIEEE[1], dstIEEE[2], dstIEEE[3], dstIEEE[4], dstIEEE[5], dstIEEE[6], dstIEEE[7], clusterID);
-	                
+	
 	calcFcs(cmd, sizeof(cmd));		
   zbSocTransportWrite(cmd,sizeof(cmd));
 }
@@ -1659,7 +1581,7 @@ void zbSocGetState(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   		0x00       //FCS - fill in later
   	};
       
-  	calcFcs(cmd, sizeof(cmd));  	
+  	calcFcs(cmd, sizeof(cmd));
     zbSocTransportWrite(cmd,sizeof(cmd));
 } 
  
@@ -1849,7 +1771,7 @@ void zbSocGetTemp(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
   		0x00       //FCS - fill in later
   	};
       
-  	calcFcs(cmd, sizeof(cmd));  	
+  	calcFcs(cmd, sizeof(cmd));
     zbSocTransportWrite(cmd,sizeof(cmd));
 } 
 
@@ -1956,7 +1878,7 @@ void zbSocGetCurrentPrice(uint8_t rxOnIdle, uint16_t dstAddr, uint8_t endpoint, 
   	};    
     
     calcFcs(cmd, sizeof(cmd));
-    
+
     zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
@@ -2013,6 +1935,10 @@ static void processRpcSysAppNewDevInd(uint8_t *TlIndBuff)
   epInfo.profileID = BUILD_UINT16(TlIndBuff[0], TlIndBuff[1]);
   TlIndBuff+=2;      
   epInfo.deviceID = BUILD_UINT16(TlIndBuff[0], TlIndBuff[1]);
+  if (epInfo.deviceID == 0x0100) //substitute Lighting: On/Off Light with Generic: Mains Power Outlet. It is required until support is added in the android app to handle the outlet that pretends to be a light
+  {
+  	epInfo.deviceID = 0x0009;
+  }
   TlIndBuff+=2;   
   epInfo.version = *TlIndBuff++;
   epInfo.deviceName = NULL;
@@ -2022,7 +1948,9 @@ static void processRpcSysAppNewDevInd(uint8_t *TlIndBuff)
     epInfo.IEEEAddr[i] = *TlIndBuff++;
   }
   
-  //printf("processRpcSysAppNewDevInd: %x:%x\n",  epInfo.nwkAddr, epInfo.endpoint);
+  epInfo.flags = *TlIndBuff++;
+
+//  printf("processRpcSysAppNewDevInd: %x:%x\n",  epInfo.nwkAddr, epInfo.endpoint);
   if(zbSocCb.pfnNewDevIndicationCb)
   {
     zbSocCb.pfnNewDevIndicationCb(&epInfo);
@@ -2304,7 +2232,7 @@ static void processRpcSysApp(uint8_t *rpcBuff)
   else if( rpcBuff[1] == MT_APP_NEW_DEV_IND )
   {
     processRpcSysAppNewDevInd(&rpcBuff[2]);
-  }
+  }  
   else if ( rpcBuff[1] == MT_APP_KEY_ESTABLISHMENT_STATE_IND )
   {
     processRpcSysAppKeyEstablishmentStateInd(&rpcBuff[2]);
@@ -2649,15 +2577,15 @@ static void processCertInstall(uint8_t operation)
  *
  * @return  length of current Rx Buffer
  *************************************************************************************************/
-static void processRpcSysDbg(uint8_t *rpcBuff)
+static void processRpcSysDbg(uint8_t *rpcBuff, uint8_t len)
 {
   if( rpcBuff[1] == MT_DEBUG_MSG )
   {
     //we got a debug string
 	
-    system("tput setaf 1");
-    printf("%s", (char*) &(rpcBuff[2]));
-    system("tput setaf 7");
+//    system("tput setaf 1");
+    printf("  ===> %.*s", len, (char*) &(rpcBuff[2]));
+//    system("tput setaf 7");
   }              
   else if( rpcBuff[1] == 0 )
   {
@@ -2724,10 +2652,10 @@ void zbSocProcessRpc (void)
           //there was an error
           printf("zbSocProcessRpc: read of %d bytes failed - %s\n", rpcLen, strerror(errno) );
 
-          if( retryAttempts++ < 5 )
+          if( retryAttempts++ < 50 )
           {
             //sleep for 10ms
-	          usleep(10000);
+	          usleep(100000);
             //try again
             bytesRead = 0;
           }
@@ -2763,12 +2691,12 @@ void zbSocProcessRpc (void)
           processRpcSysSys(rpcBuff);
           break;
         case MT_RPC_SYS_DBG:
-          processRpcSysDbg(rpcBuff);        
+          processRpcSysDbg(rpcBuff, len);        
           break;       
         case MT_RPC_SYS_APP:
           processRpcSysApp(rpcBuff);        
           break;       
-		    case MT_RPC_SYS_SBL:
+		case MT_RPC_SYS_SBL:
           processRpcSysSbl(rpcBuff);		  
           break;
         default:
@@ -2824,6 +2752,13 @@ void zbSocTimeoutCallback(void)
  *************************************************************************************************/
 void zbSocSblReportingCallback(void)
 {
+	if (zbSocSblProgressReportingInterval > 0)
+	{
 	zbSocSblReportingPending = TRUE;
 	zbSocEnableTimeout(REPORTING_TIMER, zbSocSblProgressReportingInterval * 100);
+}
+	else
+	{
+		zbSocDisableTimeout(REPORTING_TIMER);
+	}
 }

@@ -42,6 +42,7 @@
 #include <poll.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/timerfd.h>
 
 #include "zbSocCmd.h"
 #include "interface_devicelist.h"
@@ -49,6 +50,8 @@
 #include "interface_scenelist.h"
 #include "interface_srpcserver.h"
 #include "socket_server.h"
+
+#define MAX_DB_FILENAMR_LEN 255
 
 uint8_t zclTlIndicationCb(epInfo_t *epInfo);
 uint8_t zclNewDevIndicationCb(epInfo_t *epInfo);
@@ -102,6 +105,9 @@ int main(int argc, char* argv[])
 {
   int retval = 0;
   char * selected_serial_port;
+  int numTimerFDs = NUM_OF_TIMERS;
+  timerFDs_t *timer_fds = malloc(  NUM_OF_TIMERS * sizeof( timerFDs_t ) );
+  char dbFilename[MAX_DB_FILENAMR_LEN];
  
   printf("%s -- %s %s\n", argv[0], __DATE__, __TIME__ );
  
@@ -110,12 +116,13 @@ int main(int argc, char* argv[])
   {
     usage(argv[0]);
     printf("attempting to use /dev/ttyACM0\n\n");
-  	selected_serial_port = "/dev/ttyACM0";
+	selected_serial_port = "/dev/ttyACM0";
   }
   else
   {
   	selected_serial_port = argv[1];
   }
+  
   zbSocOpen( selected_serial_port );
   zbSocForceRun(); //skip the bootloader wait period
   
@@ -129,9 +136,25 @@ int main(int argc, char* argv[])
   	uartDebugPrintsEnabled = atoi(argv[2]);
   }
 
-  //printf("%s: restoring device, group and scene lists\n", argv[0]);
-  devListRestorDevices();
-  groupListRestorGroups();  
+  if (argc > 3)
+  {
+    if (atoi(argv[3]) == 1)
+    {
+      zbSocResetToFn();
+      printf("Sent Reset to Factory New\n");
+    }
+      else if (atoi(argv[3])  > 1)
+    {
+      //...
+    }
+  }
+  
+  zbSocGetTimerFds(timer_fds);
+  
+  sprintf(dbFilename, "%.*s/devicelistfile.dat",strrchr(argv[0],'/') - argv[0] , argv[0]);
+  devListInitDatabase(dbFilename);
+  sprintf(dbFilename, "%.*s/grouplistfile.dat",strrchr(argv[0],'/') - argv[0] , argv[0]);
+  groupListInitDatabase(dbFilename);  
   sceneListRestorScenes();
   
   zbSocRegisterCallbacks( zbSocCbs );    
@@ -145,9 +168,11 @@ int main(int argc, char* argv[])
 		if(numClientFds)
 		{
 		  int pollFdIdx;  		   
+      int timerFdIdx;
 		  int *client_fds = malloc(  numClientFds * sizeof( int ) );
+
 		  //socket client FD's + serialPortFd serial port FD
-		  struct pollfd *pollFds = malloc(  ((numClientFds + 1) * sizeof( struct pollfd )) );
+      struct pollfd *pollFds = malloc(  ((numClientFds + 1 + numTimerFDs) * sizeof( struct pollfd )) );
 		  
 		  if(client_fds && pollFds)	
 		  {
@@ -155,11 +180,11 @@ int main(int argc, char* argv[])
 		    pollFds[0].fd = serialPortFd;
 #if (!HAL_UART_SPI)
           //Fd will be a characture driver
-          pollFds[0].events = POLLIN;
+  			pollFds[0].events = POLLIN;
 #else	      
           //Fd Will be GPIO
     	  pollFds[0].events = POLLPRI;
-
+  			
           //try to read any messages that might already be wating
           if(zbSocPhyPoll())
           {
@@ -180,10 +205,16 @@ int main(int argc, char* argv[])
   			  pollFds[pollFdIdx+1].events = POLLIN | POLLRDHUP;
   			  //printf("%s: adding fd %d to poll()\n", argv[0], pollFds[pollFdIdx].fd); 	  				
   		  }	
+        for(timerFdIdx=0; timerFdIdx < numTimerFDs; timerFdIdx++)
+        {
+          pollFds[numClientFds+1+timerFdIdx].fd = timer_fds[timerFdIdx].fd;
+          pollFds[numClientFds+1+timerFdIdx].events =POLLIN;
+          //printf("%s: adding fd %d to poll()\n", argv[0], pollFds[pollFdIdx].fd); 					
+        } 
 
 //        printf("%s: waiting for poll()\n", argv[0]);
 
-        poll(pollFds, (numClientFds+1), current_poll_timeout);
+        poll(pollFds, (numClientFds+1+numTimerFDs), current_poll_timeout);
 
         //printf("%s: got poll()\n", argv[0]);
         
@@ -193,6 +224,7 @@ int main(int argc, char* argv[])
           printf("Message from the ZigBee SoC\n");
           zbSocProcessRpc();
         }
+
         //did the poll unblock because of activity on the socket interface?
         for(pollFdIdx=1; pollFdIdx < (numClientFds+1); pollFdIdx++)
         {
@@ -203,13 +235,14 @@ int main(int argc, char* argv[])
           }
         }          
 		
-        if (zbSocHandleTimers())
+        //did the poll unblock because of timer expiration?
+        for(timerFdIdx=0; timerFdIdx < numTimerFDs; timerFdIdx++)
         {
-          current_poll_timeout = BOOTLOADER_TIMEOUT / 10;
+          if (pollFds[numClientFds+1+timerFdIdx].revents)
+        {
+            printf("Timer expired: #%d\n", timerFdIdx);
+            timer_fds[timerFdIdx].callback();
         }
-        else
-        {
-          current_poll_timeout = -1;
         }
         	  
         free( client_fds );	  
@@ -221,17 +254,46 @@ int main(int argc, char* argv[])
   return retval;
 }
 
+
 uint8_t zclTlIndicationCb(epInfo_t *epInfo)
 {
-  devListAddDevice(epInfo);
-  RSPC_SendEpInfo(epInfo);
+  zclNewDevIndicationCb(epInfo);
   return 0;  
 }
 
 uint8_t zclNewDevIndicationCb(epInfo_t *epInfo)
 {
+	epInfo_t* oldRec;
+	epInfoExtended_t epInfoEx;
+
+	
+	oldRec = devListGetDeviceByIeeeEp(epInfo->IEEEAddr, epInfo->endpoint);
+
+	if (oldRec != NULL)
+	{
+		if (epInfo->nwkAddr != oldRec->nwkAddr)
+		{
+			epInfoEx.type = EP_INFO_TYPE_UPDATED;
+			epInfoEx.prevNwkAddr = oldRec->nwkAddr;
+			devListRemoveDeviceByNaEp(oldRec->nwkAddr, oldRec->endpoint); //theoretically, update the database record in place is possible, but this other approach is selected to provide change logging. Records that are marked as deleted soes not have to be phisically deleted (e.g. by avoiding consilidation) and thus the database can be used as connection log
+		}
+		else
+		{
+			//not checking if any of the records has changed. assuming that for a given device (ieee_addr+endpoint_number) nothing will change except the network address.
+			epInfoEx.type = EP_INFO_TYPE_EXISTING;
+		}
+	}
+	else
+	{
+		epInfoEx.type = EP_INFO_TYPE_NEW;
+	}
+
+	if (epInfoEx.type != EP_INFO_TYPE_EXISTING)
+	{
   devListAddDevice(epInfo);
-  RSPC_SendEpInfo(epInfo);
+		epInfoEx.epInfo = epInfo;
+		RSPC_SendEpInfo(&epInfoEx);
+	}
   return 0;  
 }
 
