@@ -77,8 +77,9 @@ int main(int argc, char *argv[])
 {
   uint16_t  addr, period, loops;
   uint8_t addrMode, ep, cnt=0;
+  uint32 start_with = 0;
       
-  if(argc != 6)
+  if(argc < 6)
   {
     printf("Expected 4 and got %d params Usage: %s <device/group addr> <addr mode> <ep> <periodms> <loops>\n", argc, argv[0] );
     printf("Example - Unicast command of nwk addr 0xb85a ep 0xb every 1s: %s 0xb85a 2 0xb 1000 0\n", argv[0] );
@@ -101,6 +102,12 @@ int main(int argc, char *argv[])
     
     sscanf(argv[5], "%d", &tmpInt);    
     loops = (uint16_t) tmpInt;
+
+    if (argc > 6)
+	{
+      start_with = atoi(argv[6]);
+    }
+		
   }
       
   socketClientInit("127.0.0.1:11235", socketClientCb);
@@ -112,13 +119,13 @@ int main(int argc, char *argv[])
   while(loops != 2)
   {    
     printf("Toggling Light %x:%x - %d\n", addr, ep, cnt++ );
-    if((loops % 2) ==0) 
+    if((loops % 2) == start_with) 
     {
-      sendLightState(addr, addrMode, ep, 0);
+      sendLightState(addr, addrMode, ep, 1);
     }
     else
     {
-      sendLightState(addr, addrMode, ep, 1);
+      sendLightState(addr, addrMode, ep, 0);
     }
           
     usleep(period * 1000);
