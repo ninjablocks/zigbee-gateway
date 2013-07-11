@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
     	  pollFds[0].events = POLLPRI;
 
           //try to read any messages that might already be wating
-          if(zbSocPhyPoll())
+          if(zbSocTransportPoll())
           {
             zbSocProcessRpc();
           }

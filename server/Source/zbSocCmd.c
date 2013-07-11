@@ -495,55 +495,13 @@ static uint8_t hexStr2Array(char *str, int len, uint8_t *array)
  */
 int32_t zbSocOpen( char *_devicePath  )
 {
-  struct termios tio;
-  static char lastUsedDevicePath[255];
-  char * devicePath;
-  
-  if (_devicePath != NULL)
-  {
-	if (strlen(_devicePath) > (sizeof(lastUsedDevicePath) - 1))
-	{
-		printf("%s - device path too long\n",_devicePath);
-		return(-1);
-	}
-  	devicePath = _devicePath;
-	strcpy(lastUsedDevicePath, _devicePath);
-  }
-  else
-  {
-  	devicePath = lastUsedDevicePath;
-  }
-  
-
-  /* open the device to be non-blocking (read will return immediatly) */
-  serialPortFd = open(devicePath, O_RDWR | O_NOCTTY | O_NONBLOCK);
+  serialPortFd = zbSocTransportOpen(_devicePath);
   if (serialPortFd <0) 
   {
-    perror(devicePath); 
-    printf("%s open failed\n",devicePath);
+    perror(_devicePath); 
+    printf("%s open failed\n",_devicePath);
     return(-1);
   }
-  
-  //make the access exclusive so other instances will return -1 and exit
-  ioctl(serialPortFd, TIOCEXCL);
-
-  /* c-iflags
-     B115200 : set board rate to 115200
-     CRTSCTS : HW flow control (disabled below)
-     CS8     : 8n1 (8bit,no parity,1 stopbit)
-     CLOCAL  : local connection, no modem contol
-     CREAD   : enable receiving characters*/
-  tio.c_cflag = B38400 | CRTSCTS | CS8 | CLOCAL | CREAD;
-  /* c-iflags
-     ICRNL   : maps 0xD (CR) to 0x10 (LR), we do not want this.
-     IGNPAR  : ignore bits with parity erros, I guess it is 
-     better to ignStateore an erronious bit then interprit it incorrectly. */
-  tio.c_iflag = IGNPAR  & ~ICRNL; 
-  tio.c_oflag = 0;
-  tio.c_lflag = 0;
-
-  tcflush(serialPortFd, TCIFLUSH);
-  tcsetattr(serialPortFd,TCSANOW,&tio);
   
   return serialPortFd;
 }
@@ -555,7 +513,6 @@ void zbSocForceRun(void)
 	
 	//Send the bootloader force boot incase we have a bootloader that waits
 	zbSocTransportWrite(&forceBoot, 1);
-	tcflush(serialPortFd, TCOFLUSH);  
 	
 }
 
