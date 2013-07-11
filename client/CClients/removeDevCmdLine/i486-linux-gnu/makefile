@@ -14,15 +14,15 @@ CFLAGS= -c -Wall -g -std=gnu99
 
 all: rmdev.bin
 
-rmdev.bin: rmdev.o socket_client.o simpledb.o
-	$(CC) rmdev.o socket_client.o simpledb.o $(LIBS) -o rmdev.bin
+rmdev.bin: rmdev.o socket_client.o SimpleDB.o
+	$(CC) rmdev.o socket_client.o SimpleDB.o $(LIBS) -o rmdev.bin
 
 # rule for file "rmdev.o".
 rmdev.o: ../Source/rmdev.c
 	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../Source/rmdev.c
 
-# rule for file "simpledb.o".
-simpledb.o: ../../../../server/Source/SimpleDB.c
+# rule for file "SimpleDB.o".
+SimpleDB.o: ../../../../server/Source/SimpleDB.c
 	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../../../../server/Source/SimpleDB.c
 
 # rule for file "socket_client.o".
