@@ -22,8 +22,8 @@ rmdev.o: ../Source/rmdev.c
 	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../Source/rmdev.c
 
 # rule for file "simpledb.o".
-simpledb.o: ../../../../server/Source/simpledb.c
-	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../../../../server/Source/simpledb.c
+simpledb.o: ../../../../server/Source/SimpleDB.c
+	$(CC) $(CFLAGS) $(INCLUDE) $(DEFS) $(PROJ_DIR)../../../../server/Source/SimpleDB.c
 
 # rule for file "socket_client.o".
 socket_client.o: $(PROJ_DIR)../../Source/socket_client.h $(PROJ_DIR)../../Source/socket_client.c
