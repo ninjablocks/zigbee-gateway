@@ -174,18 +174,31 @@ static uint8_t* srpcParseEpInfo(epInfoExtended_t* epInfoEx)
   }
   
   //sizre of EP infor - the name char* + num bytes of device name
-  pSrpcMessageLen = sizeof(epInfo_t) - sizeof(char*) + devNameLen;
+  //pSrpcMessageLen = sizeof(epInfo_t) - sizeof(char*) + devNameLen;
+  pSrpcMessageLen =
+      2 /* network address */
+      + 1 /* endpoint */
+      + 2 /* profile ID */
+      + 2 /* device ID */
+      + 1 /* version */
+      + 1 /* device name length */
+      + devNameLen /* device name */
+      + 1 /* status */
+      + 8 /* IEEE address */
+      + 1 /* type */
+      + 2 /* previous network address */
+      + 1; /* flags */
   pSrpcMessage = malloc(pSrpcMessageLen + 2);
-  
+
   pTmp = pSrpcMessage;
-  
+
   if( pSrpcMessage )
   {
     //Set func ID in RPCS buffer
     *pTmp++ = SRPC_NEW_DEVICE;
     //param size
     *pTmp++ = pSrpcMessageLen;
-    
+
     *pTmp++ = LO_UINT16(epInfoEx->epInfo->nwkAddr);
     *pTmp++ = HI_UINT16(epInfoEx->epInfo->nwkAddr);
     *pTmp++ = epInfoEx->epInfo->endpoint;
@@ -193,11 +206,11 @@ static uint8_t* srpcParseEpInfo(epInfoExtended_t* epInfoEx)
     *pTmp++ = HI_UINT16(epInfoEx->epInfo->profileID);
     *pTmp++ = LO_UINT16(epInfoEx->epInfo->deviceID);
     *pTmp++ = HI_UINT16(epInfoEx->epInfo->deviceID);
-    *pTmp++ = epInfoEx->epInfo->version;  
-    
+    *pTmp++ = epInfoEx->epInfo->version;
+
     if( epInfoEx->epInfo->deviceName )
-    {    
-	  *pTmp++=devNameLen;
+    {
+      *pTmp++=devNameLen;
       for(i = 0; i < devNameLen; i++)
       {
         *pTmp++ = epInfoEx->epInfo->deviceName[i];
@@ -207,8 +220,8 @@ static uint8_t* srpcParseEpInfo(epInfoExtended_t* epInfoEx)
     {
       *pTmp++=0;
     }
-    *pTmp++ = epInfoEx->epInfo->status;    
-    
+    *pTmp++ = epInfoEx->epInfo->status;
+
     for(i = 0; i < 8; i++)
     {
       //printf("srpcParseEpInfp: IEEEAddr[%d] = %x\n", i, epInfo->IEEEAddr[i]);

@@ -1,0 +1,4 @@
+# Ignore object files and editor backups
+*.bin
+*.o
+*~

@@ -642,7 +642,7 @@ void zbSocOpenNwk(int duration)
 		0x00, //2dummy bytes
 		0x00,
 		MT_APP_RPC_CMD_PERMIT_JOIN,
-		duration, // open for 60s
+		duration & 0xff, // open for 60s
 		1,  // open all devices
 		0x00  //FCS - fill in later
     };
