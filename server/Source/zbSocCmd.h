@@ -240,7 +240,7 @@ void zbSocProcessRpc (void);
 void zbSocTouchLink(void);
 void zbSocResetToFn(void);
 void zbSocSendResetToFn(void);
-void zbSocOpenNwk(void);
+void zbSocOpenNwk(int duration);
 uint8_t zbSocInitiateCertInstall(char *filename, uint8_t force2reset);
 //ZCL Set API's
 void zbSocSetState(uint8_t state, uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);

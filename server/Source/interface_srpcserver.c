@@ -88,6 +88,7 @@ static uint8_t SRPC_changeDeviceName(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_installCertificate(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getLastMessage(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getCurrentPrice(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_permitJoin(uint8_t *pBuf, uint32_t clientFd);
 
 //SRPC Interface call back functions
 static void SRPC_CallBack_addGroupRsp(uint16_t groupId, char *nameStr, uint32_t clientFd);
@@ -111,34 +112,35 @@ typedef uint8_t (*srpcProcessMsg_t)(uint8_t *pBuf, uint32_t clientFd);
 
 const srpcProcessMsg_t rpcsProcessIncoming[] =
 {
-  SRPC_close,           //SRPC_CLOSE
-  SRPC_getDevices,      //SRPC_GET_DEVICES     
-  SRPC_setDeviceState,  //SRPC_SET_DEV_STATE     
-  SRPC_setDeviceLevel,  //SRPC_SET_DEV_LEVEL     
-  SRPC_setDeviceColor,  //SRPC_SET_DEV_COLOR
-  SRPC_getDeviceState,  //SRPC_GET_DEV_STATE     
-  SRPC_getDeviceLevel,  //SRPC_GET_DEV_LEVEL     
-  SRPC_getDeviceHue,    //SRPC_GET_DEV_HUE  
-  SRPC_getDeviceSat,    //SRPC_GET_DEV_SAT        
-  SRPC_bindDevices,     //SRPC_BIND_DEVICES      
-  SRPC_getDeviceTemp,   //SRPC_GET_THERM_READING 
-  SRPC_getDevicePower,  //SRPC_GET_POWER_READING 
-  SRPC_notSupported,    //SRPC_DISCOVER_DEVICES  
-  SRPC_notSupported,    //SRPC_SEND_ZCL          
-  SRPC_getGroups,       //SRPC_GET_GROUPS    
-  SRPC_addGroup,        //SRPC_ADD_GROUP     
-  SRPC_getScenes,       //SRPC_GET_SCENES    
-  SRPC_storeScene,      //SRPC_STORE_SCENE       
-  SRPC_recallScene,     //SRPC_RECALL_SCENE      
-  SRPC_identifyDevice,  //SRPC_IDENTIFY_DEVICE   
-  SRPC_changeDeviceName,//RPCS_CHANGE_DEVICE_NAME  
-  SRPC_removeDevice,    //SRPC_REMOVE_DEVICE    
-  SRPC_getDeviceHumid,  //SRPC_GET_HUMID_READING            
-  SRPC_sblDownloadImage, //SRPC_SBL_DOWNLOAD_IMAGE
-  SRPC_sblAbort, //SRPC_SBL_ABORT
+  SRPC_close,               //SRPC_CLOSE
+  SRPC_getDevices,          //SRPC_GET_DEVICES
+  SRPC_setDeviceState,      //SRPC_SET_DEV_STATE
+  SRPC_setDeviceLevel,      //SRPC_SET_DEV_LEVEL
+  SRPC_setDeviceColor,      //SRPC_SET_DEV_COLOR
+  SRPC_getDeviceState,      //SRPC_GET_DEV_STATE
+  SRPC_getDeviceLevel,      //SRPC_GET_DEV_LEVEL
+  SRPC_getDeviceHue,        //SRPC_GET_DEV_HUE
+  SRPC_getDeviceSat,        //SRPC_GET_DEV_SAT
+  SRPC_bindDevices,         //SRPC_BIND_DEVICES
+  SRPC_getDeviceTemp,       //SRPC_GET_THERM_READING
+  SRPC_getDevicePower,      //SRPC_GET_POWER_READING
+  SRPC_notSupported,        //SRPC_DISCOVER_DEVICES
+  SRPC_notSupported,        //SRPC_SEND_ZCL
+  SRPC_getGroups,           //SRPC_GET_GROUPS
+  SRPC_addGroup,            //SRPC_ADD_GROUP
+  SRPC_getScenes,           //SRPC_GET_SCENES
+  SRPC_storeScene,          //SRPC_STORE_SCENE
+  SRPC_recallScene,         //SRPC_RECALL_SCENE
+  SRPC_identifyDevice,      //SRPC_IDENTIFY_DEVICE
+  SRPC_changeDeviceName,    //SRPC_CHANGE_DEVICE_NAME
+  SRPC_removeDevice,        //SRPC_REMOVE_DEVICE
+  SRPC_getDeviceHumid,      //SRPC_GET_HUMID_READING
+  SRPC_sblDownloadImage,    //SRPC_SBL_DOWNLOAD_IMAGE
+  SRPC_sblAbort,            //SRPC_SBL_ABORT
   SRPC_installCertificate,  //SRPC_INSTALL_CERTIFICATE
-  SRPC_getLastMessage,  //SRPC_GET_LAST_MESSAGE
-  SRPC_getCurrentPrice, //SRPC_GET_CURRENT_PRICE
+  SRPC_getLastMessage,      //SRPC_GET_LAST_MESSAGE
+  SRPC_getCurrentPrice,     //SRPC_GET_CURRENT_PRICE
+  SRPC_permitJoin,          //SRPC_PERMIT_JOIN
 };
 
 //global variables
@@ -1346,7 +1348,36 @@ uint8_t SRPC_close(uint8_t *pBuf, uint32_t clientFd)
   }
   
   return 0; 
-} 
+}
+
+/*********************************************************************
+ * @fn          uint8_t SRPC_permitJoin(uint8_t *pBuf, uint32_t clientFd)
+ *
+ * @brief       This function exposes an interface to permit other devices to join the network.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      none
+ */
+static uint8_t SRPC_permitJoin(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t duration;
+  uint16_t magicNumber;
+
+  //increment past SRPC header
+  pBuf+=2;
+
+  duration = *pBuf++;
+  magicNumber = BUILD_UINT16(pBuf[0], pBuf[1]);
+
+  if (magicNumber == JOIN_AUTH_NUM)
+  {
+    //Open the network for joining
+    zbSocOpenNwk(duration);
+  }
+
+  return 0;
+}
 
 /*********************************************************************
  * @fn          uint8_t SRPC_getGroups(uint8_t *pBuf, uint32_t clientFd)

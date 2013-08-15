@@ -629,12 +629,12 @@ void zbSocSendResetToFn(void)
  *
  * @brief   Send the open network command to a ZigBee device.
  *
- * @param   none
+ * @param   duration - length of time to open the join in seconds.
  *
  * @return  none
  */
-void zbSocOpenNwk(void)
-{  
+void zbSocOpenNwk(int duration)
+{
 	uint8_t cmd[] = {
 		APPCMDHEADER(13)
 		0x06, //Data Len
@@ -642,13 +642,13 @@ void zbSocOpenNwk(void)
 		0x00, //2dummy bytes
 		0x00,
 		MT_APP_RPC_CMD_PERMIT_JOIN,
-		60, // open for 60s
+		duration, // open for 60s
 		1,  // open all devices
 		0x00  //FCS - fill in later
     };
-	  
+
     calcFcs(cmd, sizeof(cmd));
-    zbSocTransportWrite(cmd, sizeof(cmd)); 
+    zbSocTransportWrite(cmd, sizeof(cmd));
 }
 
 /*********************************************************************
