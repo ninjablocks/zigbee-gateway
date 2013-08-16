@@ -164,8 +164,8 @@ int main(int argc, char* argv[])
   printf("resetting CC2530");
   zbSocResetLocalDevice();
 
-  //wait for reset
-  usleep(100);
+  //wait for reset (need a better way to do this)
+  usleep(30000);
 
   //exit bootloader
   zbSocForceRun();
