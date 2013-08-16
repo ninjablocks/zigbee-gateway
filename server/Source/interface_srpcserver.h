@@ -71,7 +71,8 @@ extern "C"
 #define SRPC_KEY_ESTABLISHMENT_STATE_IND  0x0014
 #define SRPC_DISPLAY_MESSAGE_IND          0x0015
 #define SRPC_PUBLISH_PRICE_IND            0x0016
-#define SRPC_DEVICE_REMOVED 0x0017
+#define SRPC_DEVICE_REMOVED               0x0017
+#define SRPC_ONOFF_CMD                    0x0018
 
 //define incoming RPCS command ID's
 #define SRPC_CLOSE              0x80
@@ -155,6 +156,7 @@ void SRPC_CallBack_certInstallResultInd(uint8_t result);
 void SRPC_CallBack_keyEstablishmentStateInd(uint8_t state);
 void SRPC_CallBack_displayMessageInd(uint8_t *zclPayload, uint8_t len);
 void SRPC_CallBack_publishPriceInd(uint8_t *zclPayload, uint8_t len);
+void SRPC_CallBack_OnOffCmd(uint8_t commandID, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 
 #ifdef __cplusplus
 }

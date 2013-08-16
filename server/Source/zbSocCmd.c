@@ -1947,7 +1947,7 @@ static void processRpcSysAppZcl(uint8_t *zclRspBuff)
   uint16_t nwkAddr, clusterID; 
   uint8_t endpoint, appEP, zclFrameLen, zclFrameFrameControl;
     
-//  printf("processRpcSysAppZcl++\n");
+  printf("processRpcSysAppZcl++\n");
     
   //This is a ZCL response
   appEP = *zclRspBuff++;
@@ -1981,7 +1981,7 @@ static void processRpcSysAppZcl(uint8_t *zclRspBuff)
   }
   else
   {
- //   printf("processRpcSysAppZcl: Cluster messagex\n");
+    printf("processRpcSysAppZcl: Cluster message\n");
     processRpcSysAppZclCluster(zclRspBuff, zclFrameLen, clusterID, nwkAddr, endpoint);
   }
 }
@@ -2110,9 +2110,16 @@ static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen,
   commandID = *zclRspBuff++;
   len = zclFrameLen - 3; //len is frame len - 3byte ZCL header
   
-//  printf("processRpcSysAppZclCluster: commandID=%x, len=%x\n", commandID, len); 
-  
-  if( clusterID == ZCL_CLUSTER_ID_SS_IAS_ZONE)
+  printf("processRpcSysAppZclCluster: commandID=%x, len=%x\n", commandID, len); 
+
+  if( clusterID == ZCL_CLUSTER_ID_GEN_ON_OFF)
+  {
+    if(zbSocCb.pfnZclOnOffCb)      
+    {
+      zbSocCb.pfnZclOnOffCb(commandID, nwkAddr, endpoint);
+    }
+  }  
+  else if( clusterID == ZCL_CLUSTER_ID_SS_IAS_ZONE)
   {
     if(commandID == COMMAND_SS_IAS_ZONE_STATUS_CHANGE_NOTIFICATION)
     {
@@ -2125,7 +2132,7 @@ static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen,
     }
     if(commandID == COMMAND_SS_IAS_ZONE_STATUS_ENROLL_REQUEST)
     {    
-      
+      printf("processRpcSysAppZclCluster: got COMMAND_SS_IAS_ZONE_STATUS_ENROLL_REQUEST\n");
     }
   }
   else if (clusterID == ZCL_CLUSTER_ID_SE_MESSAGE)
@@ -2653,7 +2660,7 @@ void zbSocProcessRpc (void)
         case MT_RPC_SYS_APP:
           processRpcSysApp(rpcBuff);        
           break;       
-		case MT_RPC_SYS_SBL:
+	case MT_RPC_SYS_SBL:
           processRpcSysSbl(rpcBuff);		  
           break;
         default:

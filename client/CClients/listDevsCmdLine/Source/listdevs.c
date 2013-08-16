@@ -61,6 +61,8 @@ void socketClientCb( msgData_t *msg );
 uint8_t SRPC_NewDevice(uint8_t *msg);
 static void srpcSendGetDevices( void );
 
+typedef uint8_t (*srpcProcessMsg_t)(uint8_t *msg);
+
 typedef struct
 {
   char * str;
@@ -105,6 +107,12 @@ device_id_strings_t device_id_strings[] =
   {"IAS Ancillary Control Equipment",      0x0401},        
   {"IAS Zone",                             0x0402},        
   {"IAS Warning Device",                   0x0403},        
+};
+
+srpcProcessMsg_t srpcProcessIncoming[] =
+{
+  NULL,
+  SRPC_NewDevice, 
 };
 
 int keyFd;
@@ -169,14 +177,13 @@ int main(int argc, char *argv[])
  */
 void socketClientCb( msgData_t *msg )
 {
-  switch (msg->cmdId)
+  srpcProcessMsg_t func;
+
+  func = srpcProcessIncoming[(msg->cmdId)];
+  if (func)
   {
-    case SRPC_NEW_DEVICE:
-      SRPC_NewDevice(msg->pData);
-      break;
-    default:
-      break;
-  }
+    (*func)(msg->pData);
+  }      
 }
 
 

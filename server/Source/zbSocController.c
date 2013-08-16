@@ -69,6 +69,7 @@ uint8_t certInstallResultIndCb(uint8_t result);
 uint8_t keyEstablishmentStateIndCb(uint8_t state);
 uint8_t zclDisplayMessageIndCb(uint8_t *zclPayload, uint8_t len);
 uint8_t zclPublishPriceIndCb(uint8_t *zclPayload, uint8_t len);
+uint8_t zclOnOffCb(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -88,6 +89,7 @@ static zbSocCallbacks_t zbSocCbs =
   keyEstablishmentStateIndCb,  //pfnkeyEstablishmentStateIndCb - Key Establishment state change reporting
   zclDisplayMessageIndCb, //pfnZclDisplayMessageIndCb - ZCL response callback for DisplayMessage or request callback for unsolicited message
   zclPublishPriceIndCb, //pfnZclPublishPriceIndCb - ZCL response callback for GetCurrentMessage or request callback for unsolicited message
+  zclOnOffCb, // pfnZclOnOffCb - ZCL cluster command callback for on/off
 };
 
 uint8_t uartDebugPrintsEnabled = 0;
@@ -124,7 +126,6 @@ int main(int argc, char* argv[])
   }
   
   zbSocOpen( selected_serial_port );
-  zbSocForceRun(); //skip the bootloader wait period
   
   if( serialPortFd == -1 )
   {
@@ -160,6 +161,15 @@ int main(int argc, char* argv[])
   zbSocRegisterCallbacks( zbSocCbs );    
   SRPC_Init();
   
+  printf("resetting CC2530");
+  zbSocResetLocalDevice();
+
+  //wait for reset
+  usleep(100);
+
+  //exit bootloader
+  zbSocForceRun();
+
   while(1)
   {          
     int numClientFds = socketSeverGetNumClients(); 
@@ -359,6 +369,16 @@ uint8_t zclZoneSateChangeCb(uint32_t zoneState, uint16_t nwkAddr, uint8_t endpoi
     nwkAddr, endpoint, zoneState); 
   
   return 0; 
+}
+
+uint8_t zclOnOffCb(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint)
+{
+
+  SRPC_CallBack_OnOffCmd(commandID, nwkAddr, endpoint, 0);
+
+  printf("zclOnOffCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    commandID   : %02x\n\n", nwkAddr, endpoint, commandID );
+
+  return 0;
 }
 
 uint8_t SblDoneCb(uint8_t status)

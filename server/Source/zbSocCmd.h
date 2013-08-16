@@ -184,6 +184,7 @@ typedef uint8_t (*zbSocCertInstallResultIndCb_t)(uint8_t result);
 typedef uint8_t (*zbSocKeyEstablishmentStateIndCb_t)(uint8_t state);
 typedef uint8_t (*zbSocZclDisplayMessageIndCb_t)(uint8_t *zclPayload, uint8_t len);
 typedef uint8_t (*zbSocZclPublishPriceIndCb_t)(uint8_t *zclPayload, uint8_t len);
+typedef uint8_t (*zbSocZclOnOffCb_t)(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint);
 
 typedef struct
 {
@@ -196,13 +197,14 @@ typedef struct
   zbSocZclGetTempCb_t            pfnZclGetTempCb;         // ZCL response callback for get Temp
   zbSocZclReadPowerRspCb_t       pfnZclReadPowerRspCb;    // ZCL response callback for read Power
   zbSocZclGetHumidCb_t           pfnZclGetHumidCb;         // ZCL response callback for get Temp    
-  zbSocZoneStateChangeCb_t       pfnZclZoneStateChangeCb;    //ZCL Command indicating Alarm Zone State Change
+  zbSocZoneStateChangeCb_t       pfnZclZoneStateChangeCb;    //ZCL cluster command indicating Alarm Zone State Change
   zbSocBootloadingDoneCb_t       pfnBootloadingDoneCb;    //Bootloader processing ended
   zbSocBootloadingProgressReportingCb_t pfnBootloadingProgressReportingCb; //bootloader progress reporting
   zbSocCertInstallResultIndCb_t   pfnCertInstallResultIndCb;  // Certificate installation result indication callback
   zbSocKeyEstablishmentStateIndCb_t   pfnKeyEstablishmentStateIndCb;  // Key Establishment state change reporting
   zbSocZclDisplayMessageIndCb_t  pfnZclDisplayMessageIndCb;  // ZCL response callback for GetLastMessage or ZCL unsolicited message callback for DisplayMessage
   zbSocZclPublishPriceIndCb_t    pfnZclPublishPriceIndCb;    // ZCL response callback for GetCurrentPrice or ZCL unsolicited message callback for PublishPrice
+  zbSocZclOnOffCb_t              pfnZclOnOffCb; // ZCL cluster command callback for on/off
 } zbSocCallbacks_t;
 
 typedef void (*timerCallback_t)(void);
