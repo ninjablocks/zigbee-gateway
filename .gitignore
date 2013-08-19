@@ -2,3 +2,5 @@
 *.bin
 *.o
 *~
+# Ignore saved lists
+*.dat
