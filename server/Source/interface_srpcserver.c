@@ -1923,6 +1923,44 @@ void SRPC_CallBack_zoneSateInd(uint32_t zoneState, uint16_t srcAddr, uint8_t end
   return;              
 }
 
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_OnOffCmd
+ *
+ * @brief   Sends the get Power Rsp to the client that sent a get sat
+  *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_OnOffCmd(uint8_t commandID, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
+{
+  uint8_t * pBuf;  
+  uint8_t pSrpcMessage[2 + 4];
+    
+  //printf("SRPC_CallBack_OnOffCmd++\n");
+  
+  //RpcMessage contains function ID param Data Len and param data
+  
+  pBuf = pSrpcMessage;
+  
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_ONOFF_CMD;
+  //param size
+  *pBuf++ = 4;
+  
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;   
+  *pBuf++ = commandID;
+        
+  printf("SRPC_CallBack_OnOffCmd: commandID=%x\n", commandID);
+  
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);  
+
+  //printf("SRPC_CallBack_OnOffCmd--\n");
+                    
+  return;              
+}
+
 void error(const char *msg)
 {
     perror(msg);
