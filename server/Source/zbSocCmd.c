@@ -128,23 +128,24 @@ len,   /*RPC payload Len                                      */     \
 #define ZCL_CMD_WRITE_RSP                               0x04
 
 // General Clusters
+#define ZCL_CLUSTER_ID_GEN_BASIC                       0x0000
 #define ZCL_CLUSTER_ID_GEN_IDENTIFY                    0x0003
 #define ZCL_CLUSTER_ID_GEN_GROUPS                      0x0004
 #define ZCL_CLUSTER_ID_GEN_SCENES                      0x0005
 #define ZCL_CLUSTER_ID_GEN_ON_OFF                      0x0006
 #define ZCL_CLUSTER_ID_GEN_LEVEL_CONTROL               0x0008
-#define ZCL_CLUSTER_ID_GEN_KEY_ESTABLISHMENT                 0x0800
+#define ZCL_CLUSTER_ID_GEN_KEY_ESTABLISHMENT           0x0800
 // Lighting Clusters
 #define ZCL_CLUSTER_ID_LIGHTING_COLOR_CONTROL          0x0300
-// Mettering and Sensing Clusters
-#define ZCL_CLUSTER_ID_MS_TEMPERATURE_MEASUREMENT			 0x0402
-#define ZCL_CLUSTER_ID_MS_REL_HUMIDITY_MEASUREMENT		 0x0405
+// Metering and Sensing Clusters
+#define ZCL_CLUSTER_ID_MS_TEMPERATURE_MEASUREMENT      0x0402
+#define ZCL_CLUSTER_ID_MS_REL_HUMIDITY_MEASUREMENT     0x0405
 // Pricing
-#define ZCL_CLUSTER_ID_SE_PRICING                            0x0700
+#define ZCL_CLUSTER_ID_SE_PRICING                      0x0700
 //Metering
 #define ZCL_CLUSTER_ID_SE_SIMPLE_METERING              0x0702
 // Messaging
-#define ZCL_CLUSTER_ID_SE_MESSAGE                            0x0703
+#define ZCL_CLUSTER_ID_SE_MESSAGE                      0x0703
 // Security and Safety (SS) Clusters
 #define ZCL_CLUSTER_ID_SS_IAS_ZONE                     0x0500
 
@@ -154,10 +155,12 @@ len,   /*RPC payload Len                                      */     \
 #define ZCL_DATATYPE_UINT16                             0x21
 #define ZCL_DATATYPE_INT16                              0x29
 #define ZCL_DATATYPE_INT24                              0x2a
+#define ZCL_DATATYPE_CHAR_STRING                        0x42
 
 /*******************************/
 /*** Generic Cluster ATTR's  ***/
 /*******************************/
+#define ATTRID_MODEL_NAME                                 0x0005
 #define ATTRID_ON_OFF                                     0x0000
 #define ATTRID_LEVEL_CURRENT_LEVEL                        0x0000
 
@@ -370,6 +373,14 @@ typedef struct {
  */
 int serialPortFd = 0;
 uint8_t transSeqNumber = 0;
+
+/*
+ * (RMJ, Kynesim): This is a hack, but I don't have time to do it
+ * neatly.  Really we shoud be building an actual zone table, all the
+ * better to route information with.  For now, we'll skip that in
+ * favour of having any form of enrollment response.
+ */
+uint8_t nextZoneId = 0;
 
 zbSocCallbacks_t zbSocCb;
 uint32_t zbSocSblProgressReportingInterval;
@@ -642,7 +653,7 @@ void zbSocOpenNwk(int duration)
 		0x00, //2dummy bytes
 		0x00,
 		MT_APP_RPC_CMD_PERMIT_JOIN,
-		duration & 0xff, // open for 60s
+		duration & 0xff, // open for a period
 		1,  // open all devices
 		0x00  //FCS - fill in later
     };
@@ -1505,6 +1516,44 @@ void zbSocBind(uint16_t srcNwkAddr, uint8_t srcEndpoint, uint8_t srcIEEE[8], uin
 }
 
 /*********************************************************************
+ * @fn     zbSocGetModelName
+ *
+ * @brief  Get the model name of the device
+ *
+ * @param   dstAddr - Nwk Addr or Group ID of the Light(s) to be sent the command.
+ * @param   endpoint - endpoint of the Light.
+ * @param   addrMode - Unicast or Group cast.
+ *
+ * @return  none
+ */
+void zbSocGetModelName(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
+{
+    uint8_t cmd[] = {
+        0xFE,
+        13,   /*RPC payload Len */
+        0x29, /*MT_RPC_CMD_SREQ + MT_RPC_SYS_APP */
+        0x00, /*MT_APP_MSG  */
+        0x0B, /*Application Endpoint */
+        (dstAddr & 0x00ff),
+        (dstAddr & 0xff00) >> 8,
+        endpoint, /*Dst EP */
+        (ZCL_CLUSTER_ID_GEN_BASIC & 0x00ff),
+        (ZCL_CLUSTER_ID_GEN_BASIC & 0xff00) >> 8,
+        0x06, //Data Len
+        addrMode,
+        0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
+        transSeqNumber++,
+        ZCL_CMD_READ,
+        (ATTRID_MODEL_NAME & 0x00ff),
+        (ATTRID_MODEL_NAME & 0xff00) >> 8,
+        0x00       //FCS - fill in later
+    };
+
+    calcFcs(cmd, sizeof(cmd));
+    zbSocTransportWrite(cmd,sizeof(cmd));
+}
+
+/*********************************************************************
  * @fn      zbSocGetState
  *
  * @brief   Send the get state command to a ZigBee light.
@@ -2077,6 +2126,13 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
         zbSocCb.pfnZclReadPowerRspCb(power, nwkAddr, endpoint);
       }    
     }
+    else if( (clusterID == ZCL_CLUSTER_ID_GEN_BASIC) && (attrID == ATTRID_MODEL_NAME) && (dataType == ZCL_DATATYPE_CHAR_STRING) )
+    {
+      if(zbSocCb.pfnZclModelNameCb)
+      {
+        zbSocCb.pfnZclModelNameCb(zclRspBuff+1, zclRspBuff[0], nwkAddr, endpoint);
+      }
+    }
     else                
     {
       //unsupported ZCL Read Rsp
@@ -2110,7 +2166,7 @@ static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen,
   commandID = *zclRspBuff++;
   len = zclFrameLen - 3; //len is frame len - 3byte ZCL header
   
-  printf("processRpcSysAppZclCluster: commandID=%x, len=%x\n", commandID, len); 
+  printf("processRpcSysAppZclCluster: clusterID=%x, commandID=%x, len=%x\n", clusterID, commandID, len);
 
   if( clusterID == ZCL_CLUSTER_ID_GEN_ON_OFF)
   {
@@ -2126,13 +2182,44 @@ static void processRpcSysAppZclCluster(uint8_t *zclRspBuff, uint8_t zclFrameLen,
       if(zbSocCb.pfnZclZoneStateChangeCb)      
       {
         uint32_t zoneState;  
-        zoneState = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[3], 0);            
+        zoneState = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], 0);            
         zbSocCb.pfnZclZoneStateChangeCb(zoneState, nwkAddr, endpoint);
       }
     }
     if(commandID == COMMAND_SS_IAS_ZONE_STATUS_ENROLL_REQUEST)
-    {    
+    {
+      uint8_t cmd[] = {
+          0xFE,
+          13,   // RPC payload length
+          0x29, // MT_RPC_CMD_AREQ + MT_RPC_SYS_APP
+          0x00, // MT_APP_MSG
+          0x0B, // application endpoint
+          (nwkAddr & 0x00ff),
+          (nwkAddr & 0xff00) >> 8,
+          endpoint, // destination EP
+          (ZCL_CLUSTER_ID_SS_IAS_ZONE & 0x00ff),
+          (ZCL_CLUSTER_ID_SS_IAS_ZONE & 0xff00) >> 8,
+          0x06, // Data length
+          afAddr16Bit,
+          0x01, // ZCL frame control, send to IAS Zone cluster only
+          transSeqNumber++,
+          COMMAND_SS_IAS_ZONE_STATUS_ENROLL_RESPONSE,
+          SS_IAS_ZONE_STATUS_ENROLL_RESPONSE_CODE_SUCCESS,
+          nextZoneId,
+          0x00  // FCS - fill in later
+      };
+
+      calcFcs(cmd, sizeof(cmd));
+      zbSocTransportWrite(cmd, sizeof(cmd));
+
       printf("processRpcSysAppZclCluster: got COMMAND_SS_IAS_ZONE_STATUS_ENROLL_REQUEST\n");
+      printf("    zone type = %02x%02x, manufacturer code %02x\n",
+             zclRspBuff[1], zclRspBuff[0], zclRspBuff[2]);
+      printf("    enrolled as zone %d\n", nextZoneId);
+      // Callback?
+
+      if (++nextZoneId == 0xff)
+          nextZoneId = 0;
     }
   }
   else if (clusterID == ZCL_CLUSTER_ID_SE_MESSAGE)

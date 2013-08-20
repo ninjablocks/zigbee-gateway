@@ -89,6 +89,7 @@ static uint8_t SRPC_installCertificate(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getLastMessage(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getCurrentPrice(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_permitJoin(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_getDeviceModelName(uint8_t *pBuf, uint32_t clientFd);
 
 //SRPC Interface call back functions
 static void SRPC_CallBack_addGroupRsp(uint16_t groupId, char *nameStr, uint32_t clientFd);
@@ -141,6 +142,7 @@ const srpcProcessMsg_t rpcsProcessIncoming[] =
   SRPC_getLastMessage,      //SRPC_GET_LAST_MESSAGE
   SRPC_getCurrentPrice,     //SRPC_GET_CURRENT_PRICE
   SRPC_permitJoin,          //SRPC_PERMIT_JOIN
+  SRPC_getDeviceModelName,  //SRPC_GET_DEV_MODEL
 };
 
 //global variables
@@ -1967,6 +1969,45 @@ void error(const char *msg)
     exit(1);
 }
 
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_ModelName
+ *
+ * @brief   Sends the get model name rsp to the client that sent a get
+  *
+ * @return  Nothing
+ ***************************************************************************************************/
+void SRPC_CallBack_ModelName(uint8_t *model_name, uint8_t len,
+                             uint16_t srcAddr, uint8_t endpoint, uint32_t clientFD)
+{
+  uint8_t *pBuf;
+  uint8_t pSrpcMessage[2 + 4 + 32];
+  uint8_t real_len;
+
+  pBuf = pSrpcMessage;
+
+  if (len == 0xff)
+      real_len = 0;
+  else if (len > 32)
+      real_len = len = 32; /* Clip it to maximum allowed length! */
+  else
+      real_len = len;
+
+  *pBuf++ = SRPC_GET_DEV_MODEL_RSP;
+  *pBuf++ = 4 + real_len;  // param size
+
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;
+  *pBuf++ = real_len;
+  if (real_len > 0)
+      memcpy(pBuf, model_name, real_len);
+
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);
+
+  return;
+}
+
 /*********************************************************************
  * @fn          SRPC_getDevices
  *
@@ -2005,6 +2046,42 @@ static uint8_t SRPC_getDevices(uint8_t *pBuf, uint32_t clientFd)
   }
   
   return 0;  
+}
+
+/*********************************************************************
+ * @fn          SRPC_getDeviceModelName
+ *
+ * @brief       This function exposes an interface to get a device's model name attribute.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_getDeviceModelName(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t endpoint, addrMode;
+  uint16_t dstAddr;
+
+  printf("SRPC_getDeviceModelName++\n");
+
+  //increment past SRPC header
+  pBuf+=2;
+
+  addrMode = (afAddrMode_t)*pBuf++;
+  dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf += Z_EXTADDR_LEN;
+  endpoint = *pBuf++;
+  // index past panId
+  pBuf += 2;
+
+  printf("SRPC_getDeviceModelName: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+
+  // Get light state on/off
+  zbSocGetModelName(dstAddr, endpoint, addrMode);
+
+  printf("SRPC_getDeviceModelName--\n");
+
+  return 0;
 }
 
 /*********************************************************************

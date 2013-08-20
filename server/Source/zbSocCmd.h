@@ -185,6 +185,7 @@ typedef uint8_t (*zbSocKeyEstablishmentStateIndCb_t)(uint8_t state);
 typedef uint8_t (*zbSocZclDisplayMessageIndCb_t)(uint8_t *zclPayload, uint8_t len);
 typedef uint8_t (*zbSocZclPublishPriceIndCb_t)(uint8_t *zclPayload, uint8_t len);
 typedef uint8_t (*zbSocZclOnOffCb_t)(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZclModelNameCb_t)(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8_t endpoint);
 
 typedef struct
 {
@@ -205,6 +206,7 @@ typedef struct
   zbSocZclDisplayMessageIndCb_t  pfnZclDisplayMessageIndCb;  // ZCL response callback for GetLastMessage or ZCL unsolicited message callback for DisplayMessage
   zbSocZclPublishPriceIndCb_t    pfnZclPublishPriceIndCb;    // ZCL response callback for GetCurrentPrice or ZCL unsolicited message callback for PublishPrice
   zbSocZclOnOffCb_t              pfnZclOnOffCb; // ZCL cluster command callback for on/off
+  zbSocZclModelNameCb_t          pfnZclModelNameCb;  // ZCL response callback for GetModelName
 } zbSocCallbacks_t;
 
 typedef void (*timerCallback_t)(void);
@@ -255,6 +257,7 @@ void zbSocStoreScene(uint16_t groupId, uint8_t sceneId, uint16_t dstAddr, uint8_
 void zbSocRecallScene(uint16_t groupId, uint8_t sceneId, uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocBind(uint16_t srcNwkAddr, uint8_t srcEndpoint, uint8_t srcIEEE[8], uint8_t dstEndpoint, uint8_t dstIEEE[8], uint16_t clusterID);
 //ZCL Get API's
+void zbSocGetModelName(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetState(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetLevel(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetHue(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);

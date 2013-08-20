@@ -70,6 +70,7 @@ uint8_t keyEstablishmentStateIndCb(uint8_t state);
 uint8_t zclDisplayMessageIndCb(uint8_t *zclPayload, uint8_t len);
 uint8_t zclPublishPriceIndCb(uint8_t *zclPayload, uint8_t len);
 uint8_t zclOnOffCb(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclModelNameCb(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8_t endpoint);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -90,6 +91,7 @@ static zbSocCallbacks_t zbSocCbs =
   zclDisplayMessageIndCb, //pfnZclDisplayMessageIndCb - ZCL response callback for DisplayMessage or request callback for unsolicited message
   zclPublishPriceIndCb, //pfnZclPublishPriceIndCb - ZCL response callback for GetCurrentMessage or request callback for unsolicited message
   zclOnOffCb, // pfnZclOnOffCb - ZCL cluster command callback for on/off
+  zclModelNameCb,         // PfnZclModelNameCb - ZCL response callback for GetModelName
 };
 
 uint8_t uartDebugPrintsEnabled = 0;
@@ -379,6 +381,21 @@ uint8_t zclOnOffCb(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint)
   printf("zclOnOffCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    commandID   : %02x\n\n", nwkAddr, endpoint, commandID );
 
   return 0;
+}
+
+uint8_t zclModelNameCb(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8_t endpoint)
+{
+    int i;
+
+    SRPC_CallBack_ModelName(model_name, len, nwkAddr, endpoint, 0);
+
+    printf("\nzclModelNameCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    Name        : ",
+           nwkAddr, endpoint);
+    for (i = 0; i < len; i++)
+        putchar(model_name[i]);
+    putchar('\n');
+
+    return 0;
 }
 
 uint8_t SblDoneCb(uint8_t status)

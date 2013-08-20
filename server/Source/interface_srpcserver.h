@@ -49,30 +49,31 @@ extern "C"
 #include "interface_devicelist.h"
 
 //define the outgoing RPSC command ID's
-#define SRPC_NEW_DEVICE     0x0001
-#define SRPC_DEV_ANNCE		      0x0002
-#define SRPC_SIMPLE_DESC	      0x0003
-#define SRPC_TEMP_READING       0x0004
+#define SRPC_NEW_DEVICE                   0x0001
+#define SRPC_DEV_ANNCE		          0x0002
+#define SRPC_SIMPLE_DESC	          0x0003
+#define SRPC_TEMP_READING                 0x0004
 #define SRPC_READ_POWER_RSP               0x0005
-#define SRPC_PING               0x0006
-#define SRPC_GET_DEV_STATE_RSP  0x0007	
-#define SRPC_GET_DEV_LEVEL_RSP  0x0008
-#define SRPC_GET_DEV_HUE_RSP    0x0009
-#define SRPC_GET_DEV_SAT_RSP    0x000a
-#define SRPC_ADD_GROUP_RSP      0x000b
-#define SRPC_GET_GROUP_RSP      0x000c
-#define SRPC_ADD_SCENE_RSP      0x000d
-#define SRPC_GET_SCENE_RSP      0x000e
-#define SRPC_HUMID_READING      0x000f
-#define SRPC_ZONESTATE_CHANGE   0x0010
-#define SRPC_SBL_RSP     0x0011
-#define SRPC_SBL_PROGRESS 0x0012
+#define SRPC_PING                         0x0006
+#define SRPC_GET_DEV_STATE_RSP            0x0007
+#define SRPC_GET_DEV_LEVEL_RSP            0x0008
+#define SRPC_GET_DEV_HUE_RSP              0x0009
+#define SRPC_GET_DEV_SAT_RSP              0x000a
+#define SRPC_ADD_GROUP_RSP                0x000b
+#define SRPC_GET_GROUP_RSP                0x000c
+#define SRPC_ADD_SCENE_RSP                0x000d
+#define SRPC_GET_SCENE_RSP                0x000e
+#define SRPC_HUMID_READING                0x000f
+#define SRPC_ZONESTATE_CHANGE             0x0010
+#define SRPC_SBL_RSP                      0x0011
+#define SRPC_SBL_PROGRESS                 0x0012
 #define SRPC_CERT_INSTALL_RESULT_IND      0x0013
 #define SRPC_KEY_ESTABLISHMENT_STATE_IND  0x0014
 #define SRPC_DISPLAY_MESSAGE_IND          0x0015
 #define SRPC_PUBLISH_PRICE_IND            0x0016
 #define SRPC_DEVICE_REMOVED               0x0017
 #define SRPC_ONOFF_CMD                    0x0018
+#define SRPC_GET_DEV_MODEL_RSP            0x0019
 
 //define incoming RPCS command ID's
 #define SRPC_CLOSE               0x80
@@ -104,6 +105,7 @@ extern "C"
 #define SRPC_GET_LAST_MESSAGE    0x9a
 #define SRPC_GET_CURRENT_PRICE   0x9b
 #define SRPC_PERMIT_JOIN         0x9c
+#define SRPC_GET_DEV_MODEL       0x9d
 
 #define SRPC_FUNC_ID 0
 #define SRPC_MSG_LEN 1
@@ -159,6 +161,8 @@ void SRPC_CallBack_keyEstablishmentStateInd(uint8_t state);
 void SRPC_CallBack_displayMessageInd(uint8_t *zclPayload, uint8_t len);
 void SRPC_CallBack_publishPriceInd(uint8_t *zclPayload, uint8_t len);
 void SRPC_CallBack_OnOffCmd(uint8_t commandID, uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
+void SRPC_CallBack_ModelName(uint8_t *model_name, uint8_t len,
+                             uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 
 #ifdef __cplusplus
 }
