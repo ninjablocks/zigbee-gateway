@@ -149,14 +149,6 @@ len,   /*RPC payload Len                                      */     \
 // Security and Safety (SS) Clusters
 #define ZCL_CLUSTER_ID_SS_IAS_ZONE                     0x0500
 
-// Data Types
-#define ZCL_DATATYPE_BOOLEAN                            0x10
-#define ZCL_DATATYPE_UINT8                              0x20
-#define ZCL_DATATYPE_UINT16                             0x21
-#define ZCL_DATATYPE_INT16                              0x29
-#define ZCL_DATATYPE_INT24                              0x2a
-#define ZCL_DATATYPE_CHAR_STRING                        0x42
-
 /*******************************/
 /*** Generic Cluster ATTR's  ***/
 /*******************************/
@@ -1554,6 +1546,46 @@ void zbSocGetModelName(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 }
 
 /*********************************************************************
+ * @fn     zbSocReadAttribute
+ *
+ * @brief  Get a generic attribute from a device
+ *
+ * @param   dstAddr - Nwk Addr or Group ID of the device(s) to be sent the command.
+ * @param   endpoint - endpoint of the Light.
+ * @param   addrMode - Unicast or Group cast.
+ * @param   clusterID - cluster to request the attribute from
+ * @param   attrID - attribute to request
+ *
+ * @return  none
+ */
+void zbSocReadAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, uint16_t clusterID, uint16_t attrID)
+{
+    uint8_t cmd[] = {
+        0xFE,
+        13,   /*RPC payload Len */
+        0x29, /*MT_RPC_CMD_SREQ + MT_RPC_SYS_APP */
+        0x00, /*MT_APP_MSG  */
+        0x0B, /*Application Endpoint */
+        (dstAddr & 0x00ff),
+        (dstAddr & 0xff00) >> 8,
+        endpoint, /*Dst EP */
+        (clusterID & 0x00ff),
+        (clusterID & 0xff00) >> 8,
+        0x06, //Data Len
+        addrMode,
+        0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
+        transSeqNumber++,
+        ZCL_CMD_READ,
+        (attrID & 0x00ff),
+        (attrID & 0xff00) >> 8,
+        0x00       //FCS - fill in later
+    };
+
+    calcFcs(cmd, sizeof(cmd));
+    zbSocTransportWrite(cmd,sizeof(cmd));
+}
+
+/*********************************************************************
  * @fn      zbSocGetState
  *
  * @brief   Send the get state command to a ZigBee light.
@@ -2133,11 +2165,22 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
         zbSocCb.pfnZclModelNameCb(zclRspBuff+1, zclRspBuff[0], nwkAddr, endpoint);
       }
     }
-    else                
+    else
     {
-      //unsupported ZCL Read Rsp
-      printf("processRpcSysAppZclFoundation: Unsupported ZCL Rsp\n");
-    } 
+      //unknown ZCL Read Rsp, send via generic read response callback
+      //printf("processRpcSysAppZclFoundation: Unknown ZCL Read Rsp\n");
+      if(zbSocCb.pfnZclGenericReadAttrCb)
+      {
+        if (status != 0)
+        {
+          printf("processRpcSysAppZclFoundation: Unknown ZCL Read Rsp fail: status=%x\n", status);
+        }
+        else
+        {
+          zbSocCb.pfnZclGenericReadAttrCb(zclRspBuff, nwkAddr, endpoint, clusterID, attrID, dataType);
+        }
+      }
+    }
   }
   else
   {

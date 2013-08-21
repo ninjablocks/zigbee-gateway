@@ -87,6 +87,17 @@ extern "C"
 #define BOOTLOADER_TIMEOUT 100 //milliseconds
 
 /********************************************************************/
+// ZigBee ZCL Definitions
+
+// Data Types
+#define ZCL_DATATYPE_BOOLEAN                            0x10
+#define ZCL_DATATYPE_UINT8                              0x20
+#define ZCL_DATATYPE_UINT16                             0x21
+#define ZCL_DATATYPE_INT16                              0x29
+#define ZCL_DATATYPE_INT24                              0x2a
+#define ZCL_DATATYPE_CHAR_STRING                        0x42
+
+/********************************************************************/
 // ZigBee Soc Types
 
 // Endpoint information record entry
@@ -186,6 +197,9 @@ typedef uint8_t (*zbSocZclDisplayMessageIndCb_t)(uint8_t *zclPayload, uint8_t le
 typedef uint8_t (*zbSocZclPublishPriceIndCb_t)(uint8_t *zclPayload, uint8_t len);
 typedef uint8_t (*zbSocZclOnOffCb_t)(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocZclModelNameCb_t)(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZclGenericReadAttrCb_t)(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
+                                               uint16_t clusterID, uint16_t attrID, uint8_t dataType);
+
 
 typedef struct
 {
@@ -207,6 +221,7 @@ typedef struct
   zbSocZclPublishPriceIndCb_t    pfnZclPublishPriceIndCb;    // ZCL response callback for GetCurrentPrice or ZCL unsolicited message callback for PublishPrice
   zbSocZclOnOffCb_t              pfnZclOnOffCb; // ZCL cluster command callback for on/off
   zbSocZclModelNameCb_t          pfnZclModelNameCb;  // ZCL response callback for GetModelName
+  zbSocZclGenericReadAttrCb_t    pfnZclGenericReadAttrCb; // ZCL response callback for an otherwise unknown attribute
 } zbSocCallbacks_t;
 
 typedef void (*timerCallback_t)(void);
@@ -267,6 +282,8 @@ void zbSocReadPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetHumid(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetLastMessage(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetCurrentPrice(uint8_t rxOnIdle, uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
+
+void zbSocReadAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, uint16_t clusterID, uint16_t attrID);
 
 void zbSocSblHandshake(void);
 void zbSocResetLocalDevice(void);

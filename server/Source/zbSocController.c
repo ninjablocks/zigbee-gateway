@@ -71,6 +71,8 @@ uint8_t zclDisplayMessageIndCb(uint8_t *zclPayload, uint8_t len);
 uint8_t zclPublishPriceIndCb(uint8_t *zclPayload, uint8_t len);
 uint8_t zclOnOffCb(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclModelNameCb(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclGenericReadAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
+                             uint16_t clusterID, uint16_t attrID, uint8_t dataType);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -91,7 +93,8 @@ static zbSocCallbacks_t zbSocCbs =
   zclDisplayMessageIndCb, //pfnZclDisplayMessageIndCb - ZCL response callback for DisplayMessage or request callback for unsolicited message
   zclPublishPriceIndCb, //pfnZclPublishPriceIndCb - ZCL response callback for GetCurrentMessage or request callback for unsolicited message
   zclOnOffCb, // pfnZclOnOffCb - ZCL cluster command callback for on/off
-  zclModelNameCb,         // PfnZclModelNameCb - ZCL response callback for GetModelName
+  zclModelNameCb,         // pfnZclModelNameCb - ZCL response callback for GetModelName
+  zclGenericReadAttrCb, // pfnZclGenericReadAttributeCb - ZCL response callback for an otherwise unknown attribute
 };
 
 uint8_t uartDebugPrintsEnabled = 0;
@@ -393,6 +396,44 @@ uint8_t zclModelNameCb(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8
            nwkAddr, endpoint);
     for (i = 0; i < len; i++)
         putchar(model_name[i]);
+    putchar('\n');
+
+    return 0;
+}
+
+uint8_t zclGenericReadAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
+                             uint16_t clusterID, uint16_t attrID, uint8_t dataType)
+{
+    int i;
+    uint8_t len;
+
+    if (dataType == 0x00)
+        len = 0;
+    else if (dataType < 0x38)
+        len = (dataType & 0x07) + 1;
+    else if (dataType < 0x40)
+        len = ((dataType & 0x07) + 1) * 2;
+    else if (dataType == ZCL_DATATYPE_CHAR_STRING)
+        len = *data++;
+    else
+    {
+        /* Don't know how to handle this, so skip out silently */
+        printf("zclGenericReadAttrCb: unknown data type %02x\n", dataType);
+        return 0;
+    }
+
+    SRPC_CallBack_ReadAttribute(data, len, nwkAddr, endpoint, clusterID, attrID, dataType, 0);
+
+    printf("\nzclGenericReadAttrCb:\n"
+           "    Network Addr : 0x%04x\n"
+           "    End Point    : 0x%02x\n"
+           "    Cluster ID   : 0x%04x\n"
+           "    Attribute ID : 0x%04x\n"
+           "    Data type    : %d\n"
+           "    Data         :",
+           nwkAddr, endpoint, clusterID, attrID, dataType);
+    for (i = 0; i < len; i++)
+        printf(" %02x", data[i]);
     putchar('\n');
 
     return 0;
