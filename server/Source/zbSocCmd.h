@@ -93,6 +93,7 @@ extern "C"
 #define ZCL_DATATYPE_BOOLEAN                            0x10
 #define ZCL_DATATYPE_UINT8                              0x20
 #define ZCL_DATATYPE_UINT16                             0x21
+#define ZCL_DATATYPE_UINT48                             0x25
 #define ZCL_DATATYPE_INT16                              0x29
 #define ZCL_DATATYPE_INT24                              0x2a
 #define ZCL_DATATYPE_CHAR_STRING                        0x42
@@ -199,19 +200,22 @@ typedef uint8_t (*zbSocZclOnOffCb_t)(uint8_t commandID, uint16_t nwkAddr, uint8_
 typedef uint8_t (*zbSocZclModelNameCb_t)(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocZclGenericReadAttrCb_t)(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
                                                uint16_t clusterID, uint16_t attrID, uint8_t dataType);
+typedef uint8_t (*zbSocZclDiscoverAttrCb_t)(uint16_t nwkAddr, uint8_t endpoint,
+                                            uint16_t clusterID, uint16_t attrID, uint8_t dataType);
+typedef uint8_t (*zbSocZclReadEnergyRspCb_t) (uint32_t energy_lo, uint32_t energy_hi, uint16_t nwkAddr, uint8_t endpoint);
 
 
 typedef struct
 {
   zbSocTlIndicationCb_t          pfnTlIndicationCb;      // TouchLink Indication callback
-  zbSocNewDevIndicationCb_t         pfnNewDevIndicationCb;  // New device Indication callback    
+  zbSocNewDevIndicationCb_t         pfnNewDevIndicationCb;  // New device Indication callback
   zbSocZclGetStateCb_t           pfnZclGetStateCb;       // ZCL response callback for get State
   zbSocZclGetLevelCb_t           pfnZclGetLevelCb;     // ZCL response callback for get Level
   zbSocZclGetHueCb_t             pfnZclGetHueCb;         // ZCL response callback for get Hue
   zbSocZclGetSatCb_t             pfnZclGetSatCb;         // ZCL response callback for get Sat
   zbSocZclGetTempCb_t            pfnZclGetTempCb;         // ZCL response callback for get Temp
   zbSocZclReadPowerRspCb_t       pfnZclReadPowerRspCb;    // ZCL response callback for read Power
-  zbSocZclGetHumidCb_t           pfnZclGetHumidCb;         // ZCL response callback for get Temp    
+  zbSocZclGetHumidCb_t           pfnZclGetHumidCb;         // ZCL response callback for get Temp
   zbSocZoneStateChangeCb_t       pfnZclZoneStateChangeCb;    //ZCL cluster command indicating Alarm Zone State Change
   zbSocBootloadingDoneCb_t       pfnBootloadingDoneCb;    //Bootloader processing ended
   zbSocBootloadingProgressReportingCb_t pfnBootloadingProgressReportingCb; //bootloader progress reporting
@@ -222,6 +226,8 @@ typedef struct
   zbSocZclOnOffCb_t              pfnZclOnOffCb; // ZCL cluster command callback for on/off
   zbSocZclModelNameCb_t          pfnZclModelNameCb;  // ZCL response callback for GetModelName
   zbSocZclGenericReadAttrCb_t    pfnZclGenericReadAttrCb; // ZCL response callback for an otherwise unknown attribute
+  zbSocZclDiscoverAttrCb_t       pfnZclDiscoverAttrCb;    // ZCL response callback for the discover command
+  zbSocZclReadEnergyRspCb_t      pfnZclReadEnergyRspCb;   // ZCL response callback for read Energy
 } zbSocCallbacks_t;
 
 typedef void (*timerCallback_t)(void);
@@ -279,11 +285,14 @@ void zbSocGetHue(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetSat(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetTemp(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocReadPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
+void zbSocReadEnergy(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetHumid(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetLastMessage(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 void zbSocGetCurrentPrice(uint8_t rxOnIdle, uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode);
 
 void zbSocReadAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, uint16_t clusterID, uint16_t attrID);
+void zbSocDiscoverAttributes(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode,
+                             uint16_t clusterID, uint16_t attrID);
 
 void zbSocSblHandshake(void);
 void zbSocResetLocalDevice(void);

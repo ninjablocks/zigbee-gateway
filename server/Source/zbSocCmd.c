@@ -126,6 +126,18 @@ len,   /*RPC payload Len                                      */     \
 #define ZCL_CMD_WRITE                                   0x02
 #define ZCL_CMD_WRITE_UNDIVIDED                         0x03
 #define ZCL_CMD_WRITE_RSP                               0x04
+#define ZCL_CMD_WRITE_NO_RSP                            0x05
+#define ZCL_CMD_CONFIGURE                               0x06
+#define ZCL_CMD_CONFIGURE_RSP                           0x07
+#define ZCL_CMD_READ_CONFIGURATION                      0x08
+#define ZCL_CMD_READ_CONFIGURATION_RSP                  0x09
+#define ZCL_CMD_REPORT                                  0x0a
+#define ZCL_CMD_DEFAULT                                 0x0b
+#define ZCL_CMD_DISCOVER                                0x0c
+#define ZCL_CMD_DISCOVER_RSP                            0x0d
+#define ZCL_CMD_READ_STRUCTURED                         0x0e
+#define ZCL_CMD_WRITE_STRUCTURED                        0x0f
+#define ZCL_CMD_WRITE_STRUCTURED_RSP                    0x10
 
 // General Clusters
 #define ZCL_CLUSTER_ID_GEN_BASIC                       0x0000
@@ -174,6 +186,8 @@ len,   /*RPC payload Len                                      */     \
 /*******************************/
 #define ATTRID_MASK_SE_HISTORICAL_CONSUMPTION             0x0400
 #define ATTRID_SE_INSTANTANEOUS_DEMAND               ( 0x0000 | ATTRID_MASK_SE_HISTORICAL_CONSUMPTION )
+#define ATTRID_MASK_SE_READING_INFO                       0x0000
+#define ATTRID_SE_CURRENT_SUM_DELIVERED              ( 0x0000 | ATTRID_MASK_SE_READING_INFO )
 
 /*******************************/
 /*** Scenes Cluster Commands ***/
@@ -1551,7 +1565,7 @@ void zbSocGetModelName(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
  * @brief  Get a generic attribute from a device
  *
  * @param   dstAddr - Nwk Addr or Group ID of the device(s) to be sent the command.
- * @param   endpoint - endpoint of the Light.
+ * @param   endpoint - endpoint of the device.
  * @param   addrMode - Unicast or Group cast.
  * @param   clusterID - cluster to request the attribute from
  * @param   attrID - attribute to request
@@ -1578,6 +1592,48 @@ void zbSocReadAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, ui
         ZCL_CMD_READ,
         (attrID & 0x00ff),
         (attrID & 0xff00) >> 8,
+        0x00       //FCS - fill in later
+    };
+
+    calcFcs(cmd, sizeof(cmd));
+    zbSocTransportWrite(cmd,sizeof(cmd));
+}
+
+/*********************************************************************
+ * @fn     zbSocDiscoverAttributes
+ *
+ * @brief  Discover the attributes on a cluster
+ *
+ * @param   dstAddr - Nwk Addr or Group ID of the device(s) to be sent the command.
+ * @param   endpoint - endpoint of the device.
+ * @param   addrMode - Unicast or Group cast.
+ * @param   clusterID - cluster to request the attributes from
+ * @param   attrID - attribute to start with
+ *
+ * @return  none
+ */
+void zbSocDiscoverAttributes(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode,
+                             uint16_t clusterID, uint16_t attrID)
+{
+    uint8_t cmd[] = {
+        0xFE,
+        14,   /*RPC payload Len */
+        0x29, /*MT_RPC_CMD_SREQ + MT_RPC_SYS_APP */
+        0x00, /*MT_APP_MSG  */
+        0x0B, /*Application Endpoint */
+        (dstAddr & 0x00ff),
+        (dstAddr & 0xff00) >> 8,
+        endpoint, /*Dst EP */
+        (clusterID & 0x00ff),
+        (clusterID & 0xff00) >> 8,
+        0x07, //Data Len
+        addrMode,
+        0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
+        transSeqNumber++,
+        ZCL_CMD_DISCOVER,
+        (attrID & 0x00ff),
+        (attrID & 0xff00) >> 8,
+        8,   // Max number of attributes to list in response.
         0x00       //FCS - fill in later
     };
 
@@ -1735,9 +1791,10 @@ void zbSocGetSat(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
       
   	calcFcs(cmd, sizeof(cmd));
   	zbSocTransportWrite(cmd,sizeof(cmd));
-} 
+}
+
 /*********************************************************************
- * @fn      zbSocPowerRead
+ * @fn      zbSocReadPower
  *
  * @brief   Send the read command to the ESI with regards to Instantaneous Demand.
  *
@@ -1749,31 +1806,70 @@ void zbSocGetSat(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
  */
 void zbSocReadPower(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
 {
-  	uint8_t cmd[] = {
-  		0xFE,                                                                                      
-  		13,   /*RPC payload Len */          
-  		0x29, /*MT_RPC_CMD_AREQ + MT_RPC_SYS_APP */          
-  		0x00, /*MT_APP_MSG  */          
-  		0x0B, /*Application Endpoint */          
-  		(dstAddr & 0x00ff),
-  		(dstAddr & 0xff00) >> 8,
-  		endpoint, /*Dst EP */          
-  		(ZCL_CLUSTER_ID_SE_SIMPLE_METERING & 0x00ff),
-  		(ZCL_CLUSTER_ID_SE_SIMPLE_METERING & 0xff00) >> 8,
-  		0x06, //Data Len
-  		addrMode, 
-  		0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
-  		transSeqNumber++,
-  		ZCL_CMD_READ,
-  		(ATTRID_SE_INSTANTANEOUS_DEMAND & 0x00ff),
-  		(ATTRID_SE_INSTANTANEOUS_DEMAND & 0xff00) >> 8,
-  		0x00       //FCS - fill in later
-  	};
-      
-  	calcFcs(cmd, sizeof(cmd));
-  	
+    uint8_t cmd[] = {
+        0xFE,
+        13,   /*RPC payload Len */
+        0x29, /*MT_RPC_CMD_AREQ + MT_RPC_SYS_APP */
+        0x00, /*MT_APP_MSG  */
+        0x0B, /*Application Endpoint */
+        (dstAddr & 0x00ff),
+        (dstAddr & 0xff00) >> 8,
+        endpoint, /*Dst EP */
+        (ZCL_CLUSTER_ID_SE_SIMPLE_METERING & 0x00ff),
+        (ZCL_CLUSTER_ID_SE_SIMPLE_METERING & 0xff00) >> 8,
+        0x06, //Data Len
+        addrMode,
+        0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
+        transSeqNumber++,
+        ZCL_CMD_READ,
+        (ATTRID_SE_INSTANTANEOUS_DEMAND & 0x00ff),
+        (ATTRID_SE_INSTANTANEOUS_DEMAND & 0xff00) >> 8,
+        0x00       //FCS - fill in later
+    };
+
+    calcFcs(cmd, sizeof(cmd));
+
     zbSocTransportWrite(cmd,sizeof(cmd));
-} 
+}
+
+/*********************************************************************
+ * @fn      zbSocReadEnergy
+ *
+ * @brief   Send the read command to the ESI with regards to Cumulative Demand.
+ *
+ * @param   dstAddr - Nwk Addr of the ESI to be sent the command.
+ * @param   endpoint - endpoint of the device.
+ * @param   addrMode - Unicast or Group cast.
+ *
+ * @return  none
+ */
+void zbSocReadEnergy(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode)
+{
+    uint8_t cmd[] = {
+        0xFE,
+        13,   /*RPC payload Len */
+        0x29, /*MT_RPC_CMD_AREQ + MT_RPC_SYS_APP */
+        0x00, /*MT_APP_MSG  */
+        0x0B, /*Application Endpoint */
+        (dstAddr & 0x00ff),
+        (dstAddr & 0xff00) >> 8,
+        endpoint, /*Dst EP */
+        (ZCL_CLUSTER_ID_SE_SIMPLE_METERING & 0x00ff),
+        (ZCL_CLUSTER_ID_SE_SIMPLE_METERING & 0xff00) >> 8,
+        0x06, //Data Len
+        addrMode,
+        0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
+        transSeqNumber++,
+        ZCL_CMD_READ,
+        (ATTRID_SE_CURRENT_SUM_DELIVERED & 0x00ff),
+        (ATTRID_SE_CURRENT_SUM_DELIVERED & 0xff00) >> 8,
+        0x00       //FCS - fill in later
+    };
+
+    calcFcs(cmd, sizeof(cmd));
+
+    zbSocTransportWrite(cmd,sizeof(cmd));
+}
 
 /*********************************************************************
  * @fn      zbSocGetTemp
@@ -2154,9 +2250,21 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
       {
         uint32_t power;  
         power = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], 0);            
-        printf("processRpcSysAppZclFoundation: Power:%x, %x:%x:%x:%x\n", power, zclRspBuff[0], zclRspBuff[1], zclRspBuff[3], 0);
+        printf("processRpcSysAppZclFoundation: Power:%x, %x:%x:%x:%x\n", power, zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], 0);
         zbSocCb.pfnZclReadPowerRspCb(power, nwkAddr, endpoint);
       }    
+    }
+    else if( (clusterID == ZCL_CLUSTER_ID_SE_SIMPLE_METERING) && (attrID == ATTRID_SE_CURRENT_SUM_DELIVERED) && (dataType == ZCL_DATATYPE_UINT48) )
+    {
+      if (zbSocCb.pfnZclReadEnergyRspCb)
+      {
+          uint32_t energy_lo, energy_hi;
+          energy_lo = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], zclRspBuff[3]);
+          energy_hi = BUILD_UINT32(zclRspBuff[4], zclRspBuff[5], 0, 0);
+          printf("processRpcSysAppZclFoundation: Energy:%x%08x, %x:%x:%x:%x:%x:%x:0:0\n", energy_hi, energy_lo,
+                 zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], zclRspBuff[3], zclRspBuff[4], zclRspBuff[5]);
+          zbSocCb.pfnZclReadEnergyRspCb(energy_lo, energy_hi, nwkAddr, endpoint);
+      }
     }
     else if( (clusterID == ZCL_CLUSTER_ID_GEN_BASIC) && (attrID == ATTRID_MODEL_NAME) && (dataType == ZCL_DATATYPE_CHAR_STRING) )
     {
@@ -2182,13 +2290,36 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
       }
     }
   }
+  else if (commandID == ZCL_CMD_DISCOVER_RSP)
+  {
+    uint8_t complete = *zclRspBuff++;
+    uint8_t *endp = zclRspBuff + zclFrameLen - 4;
+
+    if (zbSocCb.pfnZclDiscoverAttrCb)
+    {
+      uint16_t attrID;
+      uint8_t dataType;
+
+      while (zclRspBuff < endp)
+      {
+        attrID = BUILD_UINT16(zclRspBuff[0], zclRspBuff[1]);
+        zclRspBuff += 2;
+        dataType = *zclRspBuff++;
+
+        zbSocCb.pfnZclDiscoverAttrCb(nwkAddr, endpoint, clusterID, attrID, dataType);
+      }
+
+      if (!complete)
+        zbSocDiscoverAttributes(nwkAddr, endpoint, afAddr16Bit, clusterID, attrID+1);
+    }
+  }
   else
   {
     //unsupported ZCL Rsp
     printf("processRpcSysAppZclFoundation: Unsupported ZCL Rsp");;
   }
   
-  return;                    
+  return;
 }  
  
  /*************************************************************************************************

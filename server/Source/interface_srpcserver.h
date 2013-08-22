@@ -75,6 +75,8 @@ extern "C"
 #define SRPC_ONOFF_CMD                    0x0018
 #define SRPC_GET_DEV_MODEL_RSP            0x0019
 #define SRPC_READ_ATTRIBUTE_RSP           0x0020
+#define SRPC_DISCOVER_ATTRIBUTE_RSP       0x0021
+#define SRPC_READ_ENERGY_RSP              0x0022
 
 //define incoming RPCS command ID's
 #define SRPC_CLOSE               0x80
@@ -108,6 +110,8 @@ extern "C"
 #define SRPC_PERMIT_JOIN         0x9c
 #define SRPC_GET_DEV_MODEL       0x9d
 #define SRPC_READ_ATTRIBUTE      0x9e
+#define SRPC_DISCOVER_ATTRIBUTES 0x9f
+#define SRPC_READ_ENERGY         0xa0
 
 #define SRPC_FUNC_ID 0
 #define SRPC_MSG_LEN 1
@@ -167,6 +171,10 @@ void SRPC_CallBack_ModelName(uint8_t *model_name, uint8_t len,
                              uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 void SRPC_CallBack_ReadAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, uint8_t endpoint,
                                  uint16_t clusterID, uint16_t attrID, uint8_t dataType, uint32_t clientFd);
+void SRPC_CallBack_DiscoverAttribute(uint16_t srcAddr, uint8_t endpoint, uint16_t clusterID,
+                                     uint16_t attrID, uint8_t dataType, uint32_t clientFd);
+void SRPC_CallBack_readEnergyRsp(uint32_t energy_lo, uint32_t energy_hi,
+                                 uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 
 #ifdef __cplusplus
 }

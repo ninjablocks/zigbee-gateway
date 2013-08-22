@@ -61,6 +61,7 @@ uint8_t zclGetHueCb(uint8_t hue, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetSatCb(uint8_t sat, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetTempCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclReadPowerRspCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint);
+uint8_t zclReadEnergyRspCb(uint32_t energy_lo, uint32_t energy_hi, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGetHumidCb(uint16_t temp, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclZoneSateChangeCb(uint32_t zoneState, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t SblDoneCb(uint8_t status);
@@ -73,6 +74,8 @@ uint8_t zclOnOffCb(uint8_t commandID, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclModelNameCb(uint8_t *model_name, uint8_t len, uint16_t nwkAddr, uint8_t endpoint);
 uint8_t zclGenericReadAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
                              uint16_t clusterID, uint16_t attrID, uint8_t dataType);
+uint8_t zclDiscoverAttrCb(uint16_t nwkAddr, uint8_t endpoint,
+                          uint16_t clusterID, uint16_t attrID, uint8_t dataType);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -95,6 +98,8 @@ static zbSocCallbacks_t zbSocCbs =
   zclOnOffCb, // pfnZclOnOffCb - ZCL cluster command callback for on/off
   zclModelNameCb,         // pfnZclModelNameCb - ZCL response callback for GetModelName
   zclGenericReadAttrCb, // pfnZclGenericReadAttributeCb - ZCL response callback for an otherwise unknown attribute
+  zclDiscoverAttrCb,   // pfnZclDiscoverAttributeCb - ZCL response callback for a Discover command.
+  zclReadEnergyRspCb,  // pfnZclReadEnergyRspCb - ZCL response callback for get Energy
 };
 
 uint8_t uartDebugPrintsEnabled = 0;
@@ -356,6 +361,17 @@ uint8_t zclReadPowerRspCb(uint32_t power, uint16_t nwkAddr, uint8_t endpoint)
   return 0;  
 }
 
+uint8_t zclReadEnergyRspCb(uint32_t energy_lo, uint32_t energy_hi, uint16_t nwkAddr, uint8_t endpoint)
+{
+  SRPC_CallBack_readEnergyRsp(energy_lo, energy_hi, nwkAddr, endpoint, 0);
+
+  printf("\nzclReadEnergyRspCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n"
+         "    energy  : %04x%08x\n\n",
+         nwkAddr, endpoint, energy_hi, energy_lo);
+
+  return 0;
+}
+
 uint8_t zclGetHumidCb(uint16_t Humid, uint16_t nwkAddr, uint8_t endpoint)
 {
   SRPC_CallBack_getHumidRsp(Humid, nwkAddr, endpoint, 0);
@@ -435,6 +451,22 @@ uint8_t zclGenericReadAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
     for (i = 0; i < len; i++)
         printf(" %02x", data[i]);
     putchar('\n');
+
+    return 0;
+}
+
+uint8_t zclDiscoverAttrCb(uint16_t nwkAddr, uint8_t endpoint,
+                          uint16_t clusterID, uint16_t attrID, uint8_t dataType)
+{
+    SRPC_CallBack_DiscoverAttribute(nwkAddr, endpoint, clusterID, attrID, dataType, 0);
+
+    printf("\nzclGenericReadAttrCb:\n"
+           "    Network Addr : 0x%04x\n"
+           "    End Point    : 0x%02x\n"
+           "    Cluster ID   : 0x%04x\n"
+           "    Attribute ID : 0x%04x\n"
+           "    Data type    : 0x%02x\n",
+           nwkAddr, endpoint, clusterID, attrID, dataType);
 
     return 0;
 }

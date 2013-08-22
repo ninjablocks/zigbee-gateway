@@ -80,6 +80,7 @@ static uint8_t SRPC_close(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getDevices(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getDeviceTemp(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getDevicePower(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_getDeviceEnergy(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getDeviceHumid(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_notSupported(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_sblDownloadImage(uint8_t *pBuf, uint32_t clientFd);
@@ -91,6 +92,7 @@ static uint8_t SRPC_getCurrentPrice(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_permitJoin(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getDeviceModelName(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_readAttribute(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_discoverAttributes(uint8_t *pBuf, uint32_t clientFd);
 
 //SRPC Interface call back functions
 static void SRPC_CallBack_addGroupRsp(uint16_t groupId, char *nameStr, uint32_t clientFd);
@@ -145,6 +147,8 @@ const srpcProcessMsg_t rpcsProcessIncoming[] =
   SRPC_permitJoin,          //SRPC_PERMIT_JOIN
   SRPC_getDeviceModelName,  //SRPC_GET_DEV_MODEL
   SRPC_readAttribute,       //SRPC_READ_ATTRIBUTE
+  SRPC_discoverAttributes,  //SRPC_DISCOVER_ATTRIBUTES
+  SRPC_getDeviceEnergy,     //SRPC_READ_ENERGY
 };
 
 //global variables
@@ -1218,6 +1222,42 @@ static uint8_t SRPC_getDevicePower(uint8_t *pBuf, uint32_t clientFd)
 }
 
 /*********************************************************************
+ * @fn          SRPC_getDeviceEnergy
+ *
+ * @brief       This function exposes an interface to get a device's cumulative energy delievered attribute.
+ *
+ * @param       pBuf - incomin messages
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_getDeviceEnergy(uint8_t *pBuf, uint32_t clientFd)
+{
+  uint8_t endpoint, addrMode;
+  uint16_t dstAddr;
+
+  printf("SRPC_getDeviceEnergy++\n");
+
+  //increment past SRPC header
+  pBuf+=2;
+
+  addrMode = (afAddrMode_t)*pBuf++;
+  dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+  pBuf += Z_EXTADDR_LEN;
+  endpoint = *pBuf++;
+  // index past panId
+  pBuf += 2;
+
+  printf("SRPC_getDeviceEnergy: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mode=%x\n", dstAddr, endpoint, addrMode); 
+
+  // Get light sat
+  zbSocReadEnergy(dstAddr, endpoint, addrMode);
+
+  printf("SRPC_getDeviceEnergy--\n");
+
+  return 0;
+}
+
+/*********************************************************************
  * @fn          SRPC_installCertificate
  *
  * @brief       This function installs the certificate on the IHD.
@@ -1874,6 +1914,51 @@ void SRPC_CallBack_readPowerRsp(uint32_t power, uint16_t srcAddr, uint8_t endpoi
   return;              
 }
 
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_readEnergyRsp
+ *
+ * @brief   Sends the get Power Rsp to the client that sent a get sat
+  *
+ * @return  Status
+ ***************************************************************************************************/
+void SRPC_CallBack_readEnergyRsp(uint32_t energy_lo, uint32_t energy_hi,
+                                 uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd)
+{
+  uint8_t * pBuf;
+  uint8_t pSrpcMessage[2 + 9];
+
+  printf("SRPC_CallBack_readEnergyRsp++\n");
+
+  //RpcMessage contains function ID param Data Len and param data
+
+  pBuf = pSrpcMessage;
+
+  //Set func ID in RPCS buffer
+  *pBuf++ = SRPC_READ_ENERGY_RSP;
+  //param size
+  *pBuf++ = 9;
+
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;
+  *pBuf++ = energy_lo & 0xFF;
+  *pBuf++ = (energy_lo & 0xFF00) >> 8;
+  *pBuf++ = (energy_lo & 0xFF0000) >> 16;
+  *pBuf++ = (energy_lo & 0xFF000000) >> 24;
+  *pBuf++ = energy_hi & 0xFF;
+  *pBuf++ = (energy_hi & 0xFF00) >> 8;
+
+
+  printf("SRPC_CallBack_readEnergyRsp: energy=%x:%08x\n", energy_hi, energy_lo);
+
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);
+
+  printf("SRPC_CallBack_readEnergyRsp--\n");
+
+  return;
+}
+
 void SRPC_CallBack_bootloadingDone(uint8_t result)
 {
 	SRPC_CallBack_loadImageRsp(result, bootloader_initiator_clientFd);
@@ -2045,6 +2130,39 @@ void SRPC_CallBack_ReadAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, u
   return;
 }
 
+/***************************************************************************************************
+ * @fn      SRPC_CallBack_DiscoverAttribute
+ *
+ * @brief   Sends the attribute discovery rsp to the clients
+  *
+ * @return  Nothing
+ ***************************************************************************************************/
+void SRPC_CallBack_DiscoverAttribute(uint16_t srcAddr, uint8_t endpoint, uint16_t clusterID,
+                                     uint16_t attrID, uint8_t dataType, uint32_t clientFD)
+{
+  uint8_t *pBuf;
+  uint8_t pSrpcMessage[2 + 8];
+
+  pBuf = pSrpcMessage;
+
+  *pBuf++ = SRPC_DISCOVER_ATTRIBUTE_RSP;
+  *pBuf++ = 8;
+
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;
+  *pBuf++ = clusterID & 0xFF;
+  *pBuf++ = (clusterID & 0xFF00) >> 8;
+  *pBuf++ = attrID & 0xFF;
+  *pBuf++ = (attrID & 0xFF00) >> 8;
+  *pBuf++ = dataType;
+
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);
+
+  return;
+}
+
 /*********************************************************************
  * @fn          SRPC_getDevices
  *
@@ -2135,7 +2253,7 @@ static uint8_t SRPC_readAttribute(uint8_t *pBuf, uint32_t clientFd)
     uint8_t endpoint, addrMode;
     uint16_t dstAddr, clusterID, attrID;
 
-    printf("SRPC_readAttribute++\n");
+    //printf("SRPC_readAttribute++\n");
 
     //increment past SRPC header
     pBuf += 2;
@@ -2150,14 +2268,53 @@ static uint8_t SRPC_readAttribute(uint8_t *pBuf, uint32_t clientFd)
     pBuf += 2;
     attrID = BUILD_UINT16(pBuf[0], pBuf[1]);
 
-    printf("SRPC_readAttribute: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mod=%x\n",
-           dstAddr, endpoint, addrMode);
-    printf("                    clusterID=%x attributeID=%x\n", clusterID, attrID);
+    //printf("SRPC_readAttribute: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mod=%x\n",
+    //       dstAddr, endpoint, addrMode);
+    //printf("                    clusterID=%x attributeID=%x\n", clusterID, attrID);
 
     // Get attribute from device
     zbSocReadAttribute(dstAddr, endpoint, addrMode, clusterID, attrID);
 
-    printf("SRPC_readAttribute--\n");
+    //printf("SRPC_readAttribute--\n");
+
+    return 0;
+}
+
+
+/*********************************************************************
+ * @fn          SRPC_discoverAttributes
+ *
+ * @brief       This function exposes an attribute discovery interface.
+ *
+ * @param       pBuf - incoming message
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_discoverAttributes(uint8_t *pBuf, uint32_t clientFd)
+{
+    uint8_t endpoint, addrMode;
+    uint16_t dstAddr, clusterID;
+
+    printf("SRPC_discoverAttributes++\n");
+
+    //increment past SRPC header
+    pBuf += 2;
+
+    addrMode = (afAddrMode_t)*pBuf++;
+    dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+    pBuf += Z_EXTADDR_LEN;
+    endpoint = *pBuf++;
+    //index past PanID
+    pBuf += 2;
+    clusterID = BUILD_UINT16(pBuf[0], pBuf[1]);
+
+    printf("SRPC_discoverAttributes: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mod=%x clusterID=%x\n",
+           dstAddr, endpoint, addrMode, clusterID);
+
+    // Discover attributes on device
+    zbSocDiscoverAttributes(dstAddr, endpoint, addrMode, clusterID, 0x0000);
+
+    printf("SRPC_discoverAttributes--\n");
 
     return 0;
 }
