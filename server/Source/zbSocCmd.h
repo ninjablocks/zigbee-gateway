@@ -45,7 +45,7 @@ extern "C"
 #endif
 
 #include <stdint.h>
-
+#include "timer.h"
 
 /********************************************************************/
 // ZigBee Soc Definitions

@@ -42,6 +42,11 @@
 extern "C"
 {
 #endif
+    
+#ifndef POLLRDHUP
+#define POLLRDHUP 0x2000
+#endif
+
 
 /*********************************************************************
  * TYPEDEFS
