@@ -1079,7 +1079,7 @@ void zbSocEnableTimeout(zllTimer * timer, uint32_t milliseconds)
  */
 uint8_t zbSocIsTimeoutEnabled(zllTimer * timer)
 {
-	return timer->enabled;       
+	return timer->enabled;
 }
 
 /*********************************************************************
