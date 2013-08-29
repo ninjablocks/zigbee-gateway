@@ -148,7 +148,7 @@ int32_t zbSocTransportOpen( char *_devicePath  )
      CS8     : 8n1 (8bit,no parity,1 stopbit)
      CLOCAL  : local connection, no modem contol
      CREAD   : enable receiving characters*/
-  tio.c_cflag = B38400 | CRTSCTS | CS8 | CLOCAL | CREAD;
+  tio.c_cflag = B38400 /*| CRTSCTS*/ | CS8 | CLOCAL | CREAD;
   /* c-iflags
      ICRNL   : maps 0xD (CR) to 0x10 (LR), we do not want this.
      IGNPAR  : ignore bits with parity erros, I guess it is 
@@ -191,8 +191,37 @@ void zbSocTransportClose( void )
  */
 void zbSocTransportWrite( uint8_t* buf, uint8_t len )
 {
+    int remain = len;
+    int offset = 0;
+
+#if 1
+    if (uartDebugPrintsEnabled)
+    {
+        int x;
+        printf("UART OUT --> %d Bytes: SOF:%02X, Len:%02X, CMD0:%02X, CMD1:%02X, Payload:", (len), (buf)[0], (buf)[1] , (buf)[2], (buf)[3] );
+        for (x = 4; x < (len) - 1; x++)
+        {
+            printf("%02X%s", (buf)[x], x < (len) - 1 - 1 ? ":" : ",");
+        }
+        printf(" FCS:%02X\n", (buf)[x]);
+    }
+    //else
+    //    printf("zbSocTransportWrite : len = %d\n", len);
+
+    while (remain > 0)
+    {
+        int sub = (remain >= 8 ? 8 : remain);
+
+        write(serialPortFd, buf + offset, sub);
+        tcflush(serialPortFd, TCOFLUSH);
+        usleep(2000);
+        remain -= 8;
+        offset += 8;
+    }
+#else
   socWrite(serialPortFd, buf, len);
-  tcflush(serialPortFd, TCOFLUSH); 
+  tcflush(serialPortFd, TCOFLUSH);
+#endif
 
   return;
 }
