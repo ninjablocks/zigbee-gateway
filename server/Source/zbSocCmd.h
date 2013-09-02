@@ -202,7 +202,10 @@ typedef uint8_t (*zbSocZclGenericReadAttrCb_t)(uint8_t *data, uint16_t nwkAddr, 
                                                uint16_t clusterID, uint16_t attrID, uint8_t dataType);
 typedef uint8_t (*zbSocZclDiscoverAttrCb_t)(uint16_t nwkAddr, uint8_t endpoint,
                                             uint16_t clusterID, uint16_t attrID, uint8_t dataType);
-typedef uint8_t (*zbSocZclReadEnergyRspCb_t) (uint32_t energy_lo, uint32_t energy_hi, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZclReadEnergyRspCb_t)(uint32_t energy_lo, uint32_t energy_hi, uint16_t nwkAddr,
+                                             uint8_t endpoint);
+typedef uint8_t (*zbSocZclReportAttrCb_t)(uint16_t nwkAddr, uint8_t endpoint, uint16_t clusterID,
+                                          uint16_t attrID, uint8_t dataType, uint8_t **ppBuf);
 
 
 typedef struct
@@ -228,6 +231,7 @@ typedef struct
   zbSocZclGenericReadAttrCb_t    pfnZclGenericReadAttrCb; // ZCL response callback for an otherwise unknown attribute
   zbSocZclDiscoverAttrCb_t       pfnZclDiscoverAttrCb;    // ZCL response callback for the discover command
   zbSocZclReadEnergyRspCb_t      pfnZclReadEnergyRspCb;   // ZCL response callback for read Energy
+  zbSocZclReportAttrCb_t         pfnZclReportAttrCb;      // ZCL response callback for generic attribute reporting
 } zbSocCallbacks_t;
 
 typedef void (*timerCallback_t)(void);
