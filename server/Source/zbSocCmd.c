@@ -2313,6 +2313,63 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
         zbSocDiscoverAttributes(nwkAddr, endpoint, afAddr16Bit, clusterID, attrID+1);
     }
   }
+  else if (commandID == ZCL_CMD_REPORT)
+  {
+    uint8_t *endp = zclRspBuff + zclFrameLen - 4;
+    uint16_t attrID;
+    uint8_t dataType;
+
+    while (zclRspBuff < endp)
+    {
+      attrID = BUILD_UINT16(zclRspBuff[0], zclRspBuff[1]);
+      zclRspBuff += 2;
+      dataType = *zclRspBuff++;
+
+      if ((clusterID == ZCL_CLUSTER_ID_GEN_ON_OFF) &&
+          (attrID == ATTRID_ON_OFF) &&
+          (dataType == ZCL_DATATYPE_BOOLEAN))
+      {
+        if (zbSocCb.pfnZclGetStateCb)
+        {
+          zbSocCb.pfnZclGetStateCb(zclRspBuff[0], nwkAddr, endpoint);
+        }
+        zclRspBuff++;
+      }
+      else if ((clusterID == ZCL_CLUSTER_ID_SE_SIMPLE_METERING) &&
+               (attrID == ATTRID_SE_INSTANTANEOUS_DEMAND) &&
+               (dataType == ZCL_DATATYPE_INT24))
+      {
+        if (zbSocCb.pfnZclReadPowerRspCb)
+        {
+          uint32_t power;
+          power = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], 0);
+          printf("processRpcSysAppZclFoundation: Power:%x, %x:%x:%x:%x\n",
+                 power, zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], 0);
+          zbSocCb.pfnZclReadPowerRspCb(power, nwkAddr, endpoint);
+        }
+        zclRspBuff += 3;
+      }
+      else if ((clusterID == ZCL_CLUSTER_ID_SE_SIMPLE_METERING) &&
+               (attrID == ATTRID_SE_CURRENT_SUM_DELIVERED) &&
+               (dataType == ZCL_DATATYPE_UINT48))
+      {
+        if (zbSocCb.pfnZclReadEnergyRspCb)
+        {
+          uint32_t energy_lo, energy_hi;
+          energy_lo = BUILD_UINT32(zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], zclRspBuff[3]);
+          energy_hi = BUILD_UINT32(zclRspBuff[4], zclRspBuff[5], 0, 0);
+          printf("processRpcSysAppZclFoundation: Energy:%x%08x, %x:%x:%x:%x:%x:%x:0:0\n", energy_hi, energy_lo,
+                 zclRspBuff[0], zclRspBuff[1], zclRspBuff[2], zclRspBuff[3], zclRspBuff[4], zclRspBuff[5]);
+          zbSocCb.pfnZclReadEnergyRspCb(energy_lo, energy_hi, nwkAddr, endpoint);
+        }
+        zclRspBuff += 6;
+      }
+      else if (zbSocCb.pfnZclReportAttrCb)
+      {
+        zbSocCb.pfnZclReportAttrCb(nwkAddr, endpoint, clusterID, attrID, dataType, &zclRspBuff);
+      }
+    }
+  }
   else
   {
     //unsupported ZCL Rsp
