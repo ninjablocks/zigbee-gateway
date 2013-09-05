@@ -289,7 +289,6 @@ uint8_t zclNewDevIndicationCb(epInfo_t *epInfo)
 	epInfo_t* oldRec;
 	epInfoExtended_t epInfoEx;
 
-	
 	oldRec = devListGetDeviceByIeeeEp(epInfo->IEEEAddr, epInfo->endpoint);
 
 	if (oldRec != NULL)
@@ -313,10 +312,11 @@ uint8_t zclNewDevIndicationCb(epInfo_t *epInfo)
 
 	if (epInfoEx.type != EP_INFO_TYPE_EXISTING)
 	{
-  devListAddDevice(epInfo);
-		epInfoEx.epInfo = epInfo;
-		RSPC_SendEpInfo(&epInfoEx);
+            devListAddDevice(epInfo);
+            epInfoEx.epInfo = epInfo;
+            RSPC_SendEpInfo(&epInfoEx);
 	}
+
   return 0;  
 }
 
@@ -379,7 +379,7 @@ uint8_t zclGetHumidCb(uint16_t Humid, uint16_t nwkAddr, uint8_t endpoint)
 {
   SRPC_CallBack_getHumidRsp(Humid, nwkAddr, endpoint, 0);
   
-  printf("\nzclGetTempCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    Humid   : %02x\n\n", 
+  printf("\nzclGetHumidCb:\n    Network Addr : 0x%04x\n    End Point    : 0x%02x\n    Humid   : %02x\n\n", 
     nwkAddr, endpoint, Humid); 
   
   return 0; 
@@ -514,6 +514,7 @@ uint8_t zclDiscoverAttrCb(uint16_t nwkAddr, uint8_t endpoint,
 
     return 0;
 }
+
 
 uint8_t SblDoneCb(uint8_t status)
 {
