@@ -188,7 +188,7 @@ typedef uint8_t (*zbSocZclGetHueCb_t)(uint8_t hue, uint16_t nwkAddr, uint8_t end
 typedef uint8_t (*zbSocZclGetSatCb_t)(uint8_t sat, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocZclGetTempCb_t)(uint16_t sat, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocZclReadPowerRspCb_t) (uint32_t power, uint16_t nwkAddr, uint8_t endpoint);
-typedef uint8_t (*zbSocZclGetHumidCb_t)(uint16_t humnidity, uint16_t nwkAddr, uint8_t endpoint);
+typedef uint8_t (*zbSocZclGetHumidCb_t)(uint16_t humidity, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocZoneStateChangeCb_t)(uint32_t zoneState, uint16_t nwkAddr, uint8_t endpoint);
 typedef uint8_t (*zbSocBootloadingDoneCb_t)(uint8_t State);
 typedef uint8_t (*zbSocBootloadingProgressReportingCb_t)(uint8_t Phase, uint32_t location);

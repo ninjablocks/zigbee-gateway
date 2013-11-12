@@ -101,17 +101,17 @@ len,   /*RPC payload Len                                      */     \
  */
 #define MT_SYS_OSAL_NV_WRITE                 0x09
 
-#define MT_APP_RPC_CMD_TOUCHLINK          0x01
-#define MT_APP_RPC_CMD_RESET_TO_FN        0x02
-#define MT_APP_RPC_CMD_CH_CHANNEL         0x03
-#define MT_APP_RPC_CMD_JOIN_HA            0x04
-#define MT_APP_RPC_CMD_PERMIT_JOIN        0x05
-#define MT_APP_RPC_CMD_SEND_RESET_TO_FN   0x06
+#define MT_APP_RPC_CMD_TOUCHLINK             0x01
+#define MT_APP_RPC_CMD_RESET_TO_FN           0x02
+#define MT_APP_RPC_CMD_CH_CHANNEL            0x03
+#define MT_APP_RPC_CMD_JOIN_HA               0x04
+#define MT_APP_RPC_CMD_PERMIT_JOIN           0x05
+#define MT_APP_RPC_CMD_SEND_RESET_TO_FN      0x06
 #define MT_APP_RPC_CMD_INSTALL_CERTIFICATE   0x07
 
 #define MT_APP_RSP                           0x80
 #define MT_APP_ZLL_TL_IND                    0x81
-#define MT_APP_NEW_DEV_IND               0x82
+#define MT_APP_NEW_DEV_IND                   0x82
 #define MT_APP_KEY_ESTABLISHMENT_STATE_IND   0x90
 
 #define MT_DEBUG_MSG                         0x80
@@ -1521,6 +1521,7 @@ void zbSocBind(uint16_t srcNwkAddr, uint8_t srcEndpoint, uint8_t srcIEEE[8], uin
   zbSocTransportWrite(cmd,sizeof(cmd));
 }
 
+
 /*********************************************************************
  * @fn     zbSocGetModelName
  *
@@ -2364,6 +2365,29 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
         }
         zclRspBuff += 6;
       }
+      else if ((clusterID == ZCL_CLUSTER_ID_MS_TEMPERATURE_MEASUREMENT) &&
+               (attrID == ATTRID_MS_TEMPERATURE_MEASURED_VALUE) &&
+               (dataType == ZCL_DATATYPE_INT16) )
+      {
+        if (zbSocCb.pfnZclGetTempCb)
+        {
+          uint16_t temp;
+          temp = BUILD_UINT16(zclRspBuff[0], zclRspBuff[1]);
+          zbSocCb.pfnZclGetTempCb(temp, nwkAddr, endpoint);
+        }
+        zclRspBuff += 2;
+      }
+      else if ((clusterID == ZCL_CLUSTER_ID_MS_REL_HUMIDITY_MEASUREMENT) &&
+               (attrID == ATTRID_MS_RELATIVE_HUMIDITY_MEASURED_VALUE) &&
+               (dataType == ZCL_DATATYPE_UINT16))
+      {
+        if (zbSocCb.pfnZclGetHumidCb)
+        {
+          uint16_t humid;
+          humid = BUILD_UINT16(zclRspBuff[0], zclRspBuff[1]);
+          zbSocCb.pfnZclGetHumidCb(humid, nwkAddr, endpoint);
+        }
+      }
       else if (zbSocCb.pfnZclReportAttrCb)
       {
         zbSocCb.pfnZclReportAttrCb(nwkAddr, endpoint, clusterID, attrID, dataType, &zclRspBuff);
@@ -2886,7 +2910,6 @@ static void processRpcSysDbg(uint8_t *rpcBuff, uint8_t len)
   }
 }
 
-
 /*************************************************************************************************
  * @fn      zbSocProcessRpc()
  *
@@ -2967,25 +2990,25 @@ void zbSocProcessRpc (void)
 //todo: verify FCS of incoming MT frames
 
       //Read CMD0
-      switch (rpcBuff[0] & MT_RPC_SUBSYSTEM_MASK) 
+      switch (rpcBuff[0] & MT_RPC_SUBSYSTEM_MASK)
       {
         case MT_RPC_SYS_SYS:
           processRpcSysSys(rpcBuff);
           break;
         case MT_RPC_SYS_DBG:
-          processRpcSysDbg(rpcBuff, len);        
-          break;       
+          processRpcSysDbg(rpcBuff, len);
+          break;
         case MT_RPC_SYS_APP:
-          processRpcSysApp(rpcBuff);        
-          break;       
+          processRpcSysApp(rpcBuff);
+          break;
 	case MT_RPC_SYS_SBL:
-          processRpcSysSbl(rpcBuff);		  
+          processRpcSysSbl(rpcBuff);
           break;
         default:
           printf("zbSocProcessRpc: CMD0:%x, CMD1:%x, not handled\n", rpcBuff[0], rpcBuff[1] );
           break;
       }
-      
+
       free(rpcBuff);
     }
     else

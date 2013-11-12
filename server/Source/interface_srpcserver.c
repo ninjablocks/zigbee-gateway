@@ -807,7 +807,7 @@ static uint8_t SRPC_removeDevice(uint8_t *pBuf, uint32_t clientFd)
  *
  * @return      afStatus_t
  */
-uint8_t SRPC_bindDevices(uint8_t *pBuf, uint32_t clientFd)
+static uint8_t SRPC_bindDevices(uint8_t *pBuf, uint32_t clientFd)
 {  
   uint16_t srcNwkAddr;
   uint8_t srcEndpoint;
@@ -2099,7 +2099,7 @@ void SRPC_CallBack_ModelName(uint8_t *model_name, uint8_t len,
  * @fn      SRPC_CallBack_ReadAttribute
  *
  * @brief   Sends the generic read attribute rsp to the clients
-  *
+ *
  * @return  Nothing
  ***************************************************************************************************/
 void SRPC_CallBack_ReadAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, uint8_t endpoint,
