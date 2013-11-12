@@ -1601,6 +1601,61 @@ void zbSocReadAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, ui
 }
 
 /*********************************************************************
+ * @fn     zbSocWriteAttribute
+ *
+ * @brief  Set a generic attribute on a device
+ *
+ * @param   dstAddr - Nwk Addr or Group ID of the device(s) to be sent the command.
+ * @param   endpoint - endpoint of the device.
+ * @param   addrMode - Unicast or Group cast.
+ * @param   clusterID - cluster to request the attribute from
+ * @param   attrID - attribute to request
+ * @param   dataType - the type of the data being written
+ * @param   dataLength - the size of the data buffer to be written (must match expected size for given dataType)
+ * @param   data - pointer to data buffer of length dataLength
+ *
+ * @return  none
+ */
+void zbSocWriteAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, uint16_t clusterID, uint16_t attrID, uint8_t dataType, uint8_t dataLength, uint8_t *data)
+{
+    uint8_t cmdHeader[] = {
+        0xFE,
+        13,   /*RPC payload Len */
+        0x29, /*MT_RPC_CMD_SREQ + MT_RPC_SYS_APP */
+        0x00, /*MT_APP_MSG  */
+        0x0B, /*Application Endpoint */
+        (dstAddr & 0x00ff),
+        (dstAddr & 0xff00) >> 8,
+        endpoint, /*Dst EP */
+        (clusterID & 0x00ff),
+        (clusterID & 0xff00) >> 8,
+        0x06, //Data Len
+        addrMode,
+        0x00, //0x00 ZCL frame control field.  not specific to a cluster (i.e. a SCL founadation command)
+        transSeqNumber++,
+        ZCL_CMD_WRITE,
+        (attrID & 0x00ff),
+        (attrID & 0xff00) >> 8,
+        dataType,
+        // ...
+        0x00       //FCS - fill in later
+    };
+
+    int cmdSize = 18+dataLength+1;
+
+    uint8_t *cmd = malloc(cmdSize);
+
+    memcpy( cmd, cmdHeader, 18 );
+    memcpy( &cmd[18], data, dataLength );
+    cmd[cmdSize-1] = 0x00; // FCS
+
+    calcFcs(cmd, cmdSize);
+    zbSocTransportWrite(cmd, cmdSize);
+
+    free( cmd );
+}
+
+/*********************************************************************
  * @fn     zbSocDiscoverAttributes
  *
  * @brief  Discover the attributes on a cluster
@@ -2289,6 +2344,13 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
           zbSocCb.pfnZclGenericReadAttrCb(zclRspBuff, nwkAddr, endpoint, clusterID, attrID, dataType);
         }
       }
+    }
+  }
+  else if (commandID = ZCL_CMD_WRITE_RSP)
+  {
+    uint8_t status = *zclRspBuff++; // we are making the assumption that only one attribute was written
+    if(zbSocCb.pfnZclGenericWriteAttrCb) {
+      zbSocCb.pfnZclGenericWriteAttrCb(zclRspBuff, nwkAddr, endpoint, clusterID, status);
     }
   }
   else if (commandID == ZCL_CMD_DISCOVER_RSP)

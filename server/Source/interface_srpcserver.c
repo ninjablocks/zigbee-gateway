@@ -93,6 +93,7 @@ static uint8_t SRPC_permitJoin(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_getDeviceModelName(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_readAttribute(uint8_t *pBuf, uint32_t clientFd);
 static uint8_t SRPC_discoverAttributes(uint8_t *pBuf, uint32_t clientFd);
+static uint8_t SRPC_writeAttribute(uint8_t *pBuf, uint32_t clientFd);
 
 //SRPC Interface call back functions
 static void SRPC_CallBack_addGroupRsp(uint16_t groupId, char *nameStr, uint32_t clientFd);
@@ -149,6 +150,7 @@ const srpcProcessMsg_t rpcsProcessIncoming[] =
   SRPC_readAttribute,       //SRPC_READ_ATTRIBUTE
   SRPC_discoverAttributes,  //SRPC_DISCOVER_ATTRIBUTES
   SRPC_getDeviceEnergy,     //SRPC_READ_ENERGY
+  SRPC_writeAttribute,      //SRPC_WRITE_ATTRIBUTE
 };
 
 //global variables
@@ -2096,6 +2098,41 @@ void SRPC_CallBack_ModelName(uint8_t *model_name, uint8_t len,
 }
 
 /***************************************************************************************************
+ * @fn      SRPC_CallBack_WriteAttribute
+ *
+ * @brief   Sends the generic write attribute rsp to the clients
+  *
+ * @return  Nothing
+ ***************************************************************************************************/
+void SRPC_CallBack_WriteAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, uint8_t endpoint,
+                                 uint16_t clusterID, uint8_t success, uint32_t clientFD)
+{
+  uint8_t *pBuf;
+  uint8_t pSrpcMessage[2 + 8 + 256];
+
+  pBuf = pSrpcMessage;
+
+  *pBuf++ = SRPC_WRITE_ATTRIBUTE_RSP;
+  *pBuf++ = 8 + len;  // param size
+
+  *pBuf++ = srcAddr & 0xFF;
+  *pBuf++ = (srcAddr & 0xFF00) >> 8;
+  *pBuf++ = endpoint;
+  *pBuf++ = clusterID & 0xFF;
+  *pBuf++ = (clusterID & 0xFF00) >> 8;
+/*  *pBuf++ = attrID & 0xFF;
+  *pBuf++ = (attrID & 0xFF00) >> 8;*/
+  *pBuf++ = success;
+  if (len > 0)
+      memcpy(pBuf, data, len);
+
+  //Store the device that sent the request, for now send to all clients
+  srpcSendAll(pSrpcMessage);
+
+  return;
+}
+
+/***************************************************************************************************
  * @fn      SRPC_CallBack_ReadAttribute
  *
  * @brief   Sends the generic read attribute rsp to the clients
@@ -2274,6 +2311,51 @@ static uint8_t SRPC_readAttribute(uint8_t *pBuf, uint32_t clientFd)
 
     // Get attribute from device
     zbSocReadAttribute(dstAddr, endpoint, addrMode, clusterID, attrID);
+
+    //printf("SRPC_readAttribute--\n");
+
+    return 0;
+}
+
+/*********************************************************************
+ * @fn          SRPC_writeAttribute
+ *
+ * @brief       This function exposes a generic attribute writing interface.
+ *
+ * @param       pBuf - incoming message
+ *
+ * @return      afStatus_t
+ */
+static uint8_t SRPC_writeAttribute(uint8_t *pBuf, uint32_t clientFd)
+{
+    uint8_t endpoint, addrMode;
+    uint16_t dstAddr, clusterID, attrID;
+    uint8_t dataType, dataLength;
+
+    //printf("SRPC_readAttribute++\n");
+
+    //increment past SRPC header
+    pBuf += 2;
+
+    addrMode = (afAddrMode_t)*pBuf++;
+    dstAddr = BUILD_UINT16(pBuf[0], pBuf[1]);
+    pBuf += Z_EXTADDR_LEN;
+    endpoint = *pBuf++;
+    //index past PanID
+    pBuf += 2;
+    clusterID = BUILD_UINT16(pBuf[0], pBuf[1]);
+    pBuf += 2;
+    attrID = BUILD_UINT16(pBuf[0], pBuf[1]);
+    pBuf += 2;
+    dataType = *pBuf++;
+    dataLength = *pBuf++;
+
+    //printf("SRPC_readAttribute: dstAddr.addr.shortAddr=%x, endpoint=%x dstAddr.mod=%x\n",
+    //       dstAddr, endpoint, addrMode);
+    //printf("                    clusterID=%x attributeID=%x\n", clusterID, attrID);
+
+    // Get attribute from device
+    zbSocWriteAttribute(dstAddr, endpoint, addrMode, clusterID, attrID, dataType, dataLength, pBuf);
 
     //printf("SRPC_readAttribute--\n");
 

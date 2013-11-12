@@ -77,6 +77,7 @@ extern "C"
 #define SRPC_READ_ATTRIBUTE_RSP           0x0020
 #define SRPC_DISCOVER_ATTRIBUTE_RSP       0x0021
 #define SRPC_READ_ENERGY_RSP              0x0022
+#define SRPC_WRITE_ATTRIBUTE_RSP          0x0023
 
 //define incoming RPCS command ID's
 #define SRPC_CLOSE               0x80
@@ -112,6 +113,7 @@ extern "C"
 #define SRPC_READ_ATTRIBUTE      0x9e
 #define SRPC_DISCOVER_ATTRIBUTES 0x9f
 #define SRPC_READ_ENERGY         0xa0
+#define SRPC_WRITE_ATTRIBUTE     0xa1
 
 #define SRPC_FUNC_ID 0
 #define SRPC_MSG_LEN 1
@@ -175,6 +177,8 @@ void SRPC_CallBack_DiscoverAttribute(uint16_t srcAddr, uint8_t endpoint, uint16_
                                      uint16_t attrID, uint8_t dataType, uint32_t clientFd);
 void SRPC_CallBack_readEnergyRsp(uint32_t energy_lo, uint32_t energy_hi,
                                  uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
+void SRPC_CallBack_WriteAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, uint8_t endpoint,
+                                 uint16_t clusterID, uint8_t success, uint32_t clientFd);
 
 #ifdef __cplusplus
 }

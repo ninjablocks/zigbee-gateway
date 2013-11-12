@@ -78,6 +78,8 @@ uint8_t zclDiscoverAttrCb(uint16_t nwkAddr, uint8_t endpoint,
                           uint16_t clusterID, uint16_t attrID, uint8_t dataType);
 uint8_t zclGenericReportAttrCb(uint16_t nwkAddr, uint8_t endpoint, uint16_t clusterID,
                                uint16_t attrID, uint8_t dataType, uint8_t **ppData);
+uint8_t zclGenericWriteAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
+                             uint16_t clusterID, uint8_t success);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -103,6 +105,7 @@ static zbSocCallbacks_t zbSocCbs =
   zclDiscoverAttrCb,   // pfnZclDiscoverAttributeCb - ZCL response callback for a Discover command.
   zclReadEnergyRspCb,  // pfnZclReadEnergyRspCb - ZCL response callback for get Energy
   zclGenericReportAttrCb, // pfnZclReportAttrCb - ZCL response callback for attribute reports.
+  zclGenericWriteAttrCb, // pfnZclGenericWriteAttributeCb - ZCL response callback for an otherwise unknown attribute
 };
 
 uint8_t uartDebugPrintsEnabled = 0;
@@ -454,6 +457,24 @@ uint8_t zclGenericReadAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
     for (i = 0; i < len; i++)
         printf(" %02x", data[i]);
     putchar('\n');
+
+    return 0;
+}
+
+uint8_t zclGenericWriteAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
+                             uint16_t clusterID, uint8_t success)
+{
+    int i;
+    uint8_t len;
+
+    SRPC_CallBack_WriteAttribute(data, len, nwkAddr, endpoint, clusterID, success, 0);
+
+    printf("\zclGenericWriteAttrCb:\n"
+           "    Network Addr : 0x%04x\n"
+           "    End Point    : 0x%02x\n"
+           "    Cluster ID   : 0x%04x\n"
+           "    Success      : %d\n",
+           nwkAddr, endpoint, clusterID, success);
 
     return 0;
 }
