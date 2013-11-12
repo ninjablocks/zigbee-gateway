@@ -206,7 +206,7 @@ typedef uint8_t (*zbSocZclReadEnergyRspCb_t)(uint32_t energy_lo, uint32_t energy
                                              uint8_t endpoint);
 typedef uint8_t (*zbSocZclReportAttrCb_t)(uint16_t nwkAddr, uint8_t endpoint, uint16_t clusterID,
                                           uint16_t attrID, uint8_t dataType, uint8_t **ppBuf);
-typedef uint8_t (*zbSocZclGenericReadAttrCb_t)(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
+typedef uint8_t (*zbSocZclGenericWriteAttrCb_t)(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
                                                uint16_t clusterID, uint16_t attrID, uint8_t success);
 
 typedef struct
