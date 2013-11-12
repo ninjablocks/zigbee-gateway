@@ -1617,7 +1617,7 @@ void zbSocReadAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, ui
  */
 void zbSocWriteAttribute(uint16_t dstAddr, uint8_t endpoint, uint8_t addrMode, uint16_t clusterID, uint16_t attrID, uint8_t dataType, uint8_t dataLength, uint8_t *data)
 {
-    uint8_t[] cmdHeader = {
+    uint8_t cmdHeader[] = {
         0xFE,
         13,   /*RPC payload Len */
         0x29, /*MT_RPC_CMD_SREQ + MT_RPC_SYS_APP */
