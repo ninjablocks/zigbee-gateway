@@ -2105,7 +2105,7 @@ void SRPC_CallBack_ModelName(uint8_t *model_name, uint8_t len,
  * @return  Nothing
  ***************************************************************************************************/
 void SRPC_CallBack_WriteAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, uint8_t endpoint,
-                                 uint16_t clusterID, uint16_t attrID, uint8_t success, uint32_t clientFD)
+                                 uint16_t clusterID, uint8_t success, uint32_t clientFD)
 {
   uint8_t *pBuf;
   uint8_t pSrpcMessage[2 + 8 + 256];
@@ -2120,8 +2120,8 @@ void SRPC_CallBack_WriteAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, 
   *pBuf++ = endpoint;
   *pBuf++ = clusterID & 0xFF;
   *pBuf++ = (clusterID & 0xFF00) >> 8;
-  *pBuf++ = attrID & 0xFF;
-  *pBuf++ = (attrID & 0xFF00) >> 8;
+/*  *pBuf++ = attrID & 0xFF;
+  *pBuf++ = (attrID & 0xFF00) >> 8;*/
   *pBuf++ = success;
   if (len > 0)
       memcpy(pBuf, data, len);

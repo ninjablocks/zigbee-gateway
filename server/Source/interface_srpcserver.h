@@ -178,7 +178,7 @@ void SRPC_CallBack_DiscoverAttribute(uint16_t srcAddr, uint8_t endpoint, uint16_
 void SRPC_CallBack_readEnergyRsp(uint32_t energy_lo, uint32_t energy_hi,
                                  uint16_t srcAddr, uint8_t endpoint, uint32_t clientFd);
 void SRPC_CallBack_WriteAttribute(uint8_t *data, uint8_t len, uint16_t srcAddr, uint8_t endpoint,
-                                 uint16_t clusterID, uint16_t attrID, uint8_t success, uint32_t clientFd);
+                                 uint16_t clusterID, uint8_t success, uint32_t clientFd);
 
 #ifdef __cplusplus
 }

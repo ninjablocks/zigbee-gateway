@@ -79,7 +79,7 @@ uint8_t zclDiscoverAttrCb(uint16_t nwkAddr, uint8_t endpoint,
 uint8_t zclGenericReportAttrCb(uint16_t nwkAddr, uint8_t endpoint, uint16_t clusterID,
                                uint16_t attrID, uint8_t dataType, uint8_t **ppData);
 uint8_t zclGenericWriteAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
-                             uint16_t clusterID, uint16_t attrID, uint8_t success);
+                             uint16_t clusterID, uint8_t success);
 
 static zbSocCallbacks_t zbSocCbs =
 {
@@ -462,20 +462,19 @@ uint8_t zclGenericReadAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
 }
 
 uint8_t zclGenericWriteAttrCb(uint8_t *data, uint16_t nwkAddr, uint8_t endpoint,
-                             uint16_t clusterID, uint16_t attrID, uint8_t success)
+                             uint16_t clusterID, uint8_t success)
 {
     int i;
     uint8_t len;
 
-    SRPC_CallBack_WriteAttribute(data, len, nwkAddr, endpoint, clusterID, attrID, success, 0);
+    SRPC_CallBack_WriteAttribute(data, len, nwkAddr, endpoint, clusterID, success, 0);
 
     printf("\zclGenericWriteAttrCb:\n"
            "    Network Addr : 0x%04x\n"
            "    End Point    : 0x%02x\n"
            "    Cluster ID   : 0x%04x\n"
-           "    Attribute ID : 0x%04x\n"
            "    Success      : %d\n",
-           nwkAddr, endpoint, clusterID, attrID, success);
+           nwkAddr, endpoint, clusterID, success);
 
     return 0;
 }
