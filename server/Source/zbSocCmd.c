@@ -2349,7 +2349,7 @@ static void processRpcSysAppZclFoundation(uint8_t *zclRspBuff, uint8_t zclFrameL
   {
     uint8_t status = *zclRspBuff++; // we are making the assumption that only one attribute was written
     if(zbSocCb.pfnZclGenericWriteAttrCb) {
-      zbSocCb.pfnZclGenericWriteAttrCb(zclRspBuff, nwkAddr, endpoint, clusterID, success);
+      zbSocCb.pfnZclGenericWriteAttrCb(zclRspBuff, nwkAddr, endpoint, clusterID, status);
     }
   }
   else if (commandID == ZCL_CMD_DISCOVER_RSP)
